@@ -79,3 +79,21 @@ npm run test:profile-flow -- --confirm
 
 The explicit `--confirm` flag is required because the script changes AWS
 resources. `.env` is ignored by Git; do not put AWS access keys in it.
+
+## Seed Organization
+
+To create or update the example Shoppers Drug Mart organization, its Oshawa
+location, and an organization-admin staff account, set the staff pool ID and
+table names in `.env`. Set `AWS_REGION` to the Region containing the deployed
+staff pool and tables, and set `SEED_ADMIN_EMAIL` to the admin's email address.
+The script creates a Cognito staff user and sends an invitation if the user
+does not already exist. The user must use that invitation to set a permanent
+password. The seed can be rerun safely; it upserts the same organization,
+location, staff user profile, and membership records.
+
+```sh
+npm run seed:organization -- --confirm
+```
+
+The example location has only city and province set; add a real street address
+once you identify the specific Oshawa pharmacy branch.

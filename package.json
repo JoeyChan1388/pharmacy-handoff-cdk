@@ -9,6 +9,7 @@
     "watch": "tsc -w",
     "test": "jest",
     "test:profile-flow": "node --env-file=.env scripts/test-cognito-profile-flow.mjs",
+    "seed:organization": "node --env-file=.env scripts/seed-organization.mjs",
     "cdk": "cdk"
   },
   "devDependencies": {
