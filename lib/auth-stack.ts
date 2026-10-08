@@ -6,7 +6,7 @@ import * as cognitoIdentityPool from "aws-cdk-lib/aws-cognito-identitypool";
 /**
  * AuthStack
  *
- * This stack is responsible for creating the Cognito resources for the Pharmacy Handoff application.
+ * This stack is responsible for creating the Cognito resources.
  */
 export class AuthStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
