@@ -6,7 +6,10 @@ import { DataStack } from "../lib/data-stack";
 
 describe("AuthStack", () => {
 	const app = new cdk.App();
-	const stack = new AuthStack(app, "PharmacyHandoffAuth");
+	const dataStack = new DataStack(app, "PharmacyHandoffData");
+	const stack = new AuthStack(app, "PharmacyHandoffAuth", {
+		usersTable: dataStack.usersTable,
+	});
 	const template = Template.fromStack(stack);
 
 	test("creates staff and patient user pools with their intended sign-up settings", () => {
@@ -58,6 +61,27 @@ describe("AuthStack", () => {
 		template.hasResourceProperties("AWS::Lambda::Function", {
 			Runtime: "nodejs24.x",
 			Handler: "index.handler",
+		});
+	});
+
+	test("passes the users table name and grants the Lambda write access", () => {
+		template.hasResourceProperties("AWS::Lambda::Function", {
+			Environment: {
+				Variables: {
+					USERS_TABLE_NAME: Match.anyValue(),
+				},
+			},
+		});
+
+		template.hasResourceProperties("AWS::IAM::Policy", {
+			PolicyDocument: {
+				Statement: Match.arrayWith([
+					Match.objectLike({
+						Action: Match.arrayWith(["dynamodb:UpdateItem"]),
+						Effect: "Allow",
+					}),
+				]),
+			},
 		});
 	});
 });

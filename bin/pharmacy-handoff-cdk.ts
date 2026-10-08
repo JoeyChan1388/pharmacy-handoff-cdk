@@ -4,5 +4,7 @@ import { AuthStack } from '../lib/auth-stack';
 import { DataStack } from '../lib/data-stack';
 
 const app = new cdk.App();
-new AuthStack(app, 'PharmacyHandoffAuth');
-new DataStack(app, 'PharmacyHandoffData');
+const dataStack = new DataStack(app, 'PharmacyHandoffData');
+const authStack = new AuthStack(app, 'PharmacyHandoffAuth', {
+	usersTable: dataStack.usersTable,
+});

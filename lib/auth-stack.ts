@@ -5,6 +5,11 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as cognitoIdentityPool from "aws-cdk-lib/aws-cognito-identitypool";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+
+interface AuthStackProps extends cdk.StackProps {
+  usersTable: dynamodb.ITable;
+}
 
 /**
  * AuthStack
@@ -12,7 +17,7 @@ import * as cognitoIdentityPool from "aws-cdk-lib/aws-cognito-identitypool";
  * This stack is responsible for creating the Cognito resources.
  */
 export class AuthStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: AuthStackProps) {
     super(scope, id, props);
 
     const staffUserPool = new cognito.UserPool(this, "StaffUserPool", {
@@ -68,7 +73,11 @@ export class AuthStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_24_X,
       entry: join(__dirname, "../lambda/createUserProfileResolver.ts"),
       handler: "handler",
+      environment: {
+        USERS_TABLE_NAME: props.usersTable.tableName,
+      },
     });
+    props.usersTable.grantWriteData(createUserProfileResolver);
 
     /**
     * Attach the Lambda function to the PostConfirmation trigger of both

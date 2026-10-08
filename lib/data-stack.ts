@@ -9,6 +9,8 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
  * resources, table data should never be deleted.
  */
 export class DataStack extends cdk.Stack {
+  public readonly usersTable: dynamodb.Table;
+
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
@@ -18,7 +20,7 @@ export class DataStack extends cdk.Stack {
      * This DynamoDB table will store user profile information for
      * both staff and patients.
      */
-    const usersTable = new dynamodb.Table(this, "UsersTable", {
+    this.usersTable = new dynamodb.Table(this, "UsersTable", {
       tableName: `${id}-UsersTable`,
       partitionKey: { name: "userId", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -45,7 +47,7 @@ export class DataStack extends cdk.Stack {
      * The tables' removal policies are set to RETAIN to ensure that the data
      * is not deleted when the stack is deleted.
      */
-    usersTable.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
+    this.usersTable.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
     organizationsTable.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
   }
 }
