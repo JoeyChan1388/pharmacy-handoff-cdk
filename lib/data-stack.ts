@@ -42,7 +42,7 @@ export class DataStack extends cdk.Stack {
     /**
      * Removal Policies
      *
-     * The tables' removal policies are set to RETAIN to ensure that the data 
+     * The tables' removal policies are set to RETAIN to ensure that the data
      * is not deleted when the stack is deleted.
      */
     usersTable.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);

@@ -52,6 +52,14 @@ describe("AuthStack", () => {
 			AllowUnauthenticatedIdentities: false,
 		});
 	});
+
+	test("bundles the post-confirmation handler for Node.js 24", () => {
+		template.resourceCountIs("AWS::Lambda::Function", 1);
+		template.hasResourceProperties("AWS::Lambda::Function", {
+			Runtime: "nodejs24.x",
+			Handler: "index.handler",
+		});
+	});
 });
 
 describe("DataStack", () => {
