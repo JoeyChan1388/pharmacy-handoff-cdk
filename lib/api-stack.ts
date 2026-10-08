@@ -27,14 +27,14 @@ export class ApiStack extends cdk.Stack {
 
     /**
      * PharmacyHandoffApi
-     * 
+     *
      * Primary API Gateway responsible for setting up API endpoints for both
      * staff and patients.
      */
     const api = new apigateway.RestApi(this, "PharmacyHandoffApi", {
       restApiName: `${id}-Api`,
       defaultCorsPreflightOptions: {
-        allowOrigins: apigateway.Cors.ALL_ORIGINS,
+        allowOrigins: ["http://localhost:3000"],
         allowMethods: ["GET", "OPTIONS"],
         allowHeaders: ["Authorization", "Content-Type"],
       },
@@ -72,31 +72,37 @@ export class ApiStack extends cdk.Stack {
 
     /**
      * GetUserProfileResolver
-     * 
-     * This Lambda function is responsible for retrieving the user profile 
+     *
+     * This Lambda function is responsible for retrieving the user profile
      * information from the DynamoDB users table. It is used by both the staff
-     * and patient endpoints. The Lambda function is granted read-only access 
+     * and patient endpoints. The Lambda function is granted read-only access
      * to the users table.
      */
-    const getUserProfileResolver = new NodejsFunction(this, "getUserProfileResolver", {
-      runtime: lambda.Runtime.NODEJS_24_X,
-      entry: join(__dirname, "../lambda/getUserProfileResolver.ts"),
-      handler: "handler",
-      environment: {
-        USERS_TABLE_NAME: props.usersTable.tableName,
+    const getUserProfileResolver = new NodejsFunction(
+      this,
+      "getUserProfileResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(__dirname, "../lambda/getUserProfileResolver.ts"),
+        handler: "handler",
+        environment: {
+          USERS_TABLE_NAME: props.usersTable.tableName,
+        },
       },
-    });
- 
-    // Grant read permissions to the Lambda Function
+    );
+
+    // Grant read permissions to the UserProfileResolver Lambda Function
     props.usersTable.grantReadData(getUserProfileResolver);
 
-    const integration = new apigateway.LambdaIntegration(getUserProfileResolver);
-    
+    const integration = new apigateway.LambdaIntegration(
+      getUserProfileResolver,
+    );
+
     /**
      * /staff/me Resource
      */
     const staffMe = api.root.addResource("staff").addResource("me");
-    
+
     /**
      * /patient/me Resource
      */

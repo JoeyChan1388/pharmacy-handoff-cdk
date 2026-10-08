@@ -21,6 +21,11 @@ import {
   SignUpCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 import {
+  AuthenticationDetails,
+  CognitoUser,
+  CognitoUserPool,
+} from "amazon-cognito-identity-js";
+import {
   DynamoDBDocumentClient,
   DeleteCommand,
   GetCommand,
@@ -32,6 +37,7 @@ const requiredEnvironment = [
   "PATIENT_USER_POOL_ID",
   "PATIENT_USER_POOL_CLIENT_ID",
   "USERS_TABLE_NAME",
+  "API_BASE_URL",
   "TEST_EMAIL",
 ];
 
@@ -55,6 +61,7 @@ const region = process.env.AWS_REGION;
 const userPoolId = process.env.PATIENT_USER_POOL_ID;
 const clientId = process.env.PATIENT_USER_POOL_CLIENT_ID;
 const tableName = process.env.USERS_TABLE_NAME;
+const apiBaseUrl = process.env.API_BASE_URL.replace(/\/+$/, "");
 const runId = randomUUID();
 const [emailName, emailDomain] = process.env.TEST_EMAIL.split("@");
 
@@ -100,6 +107,46 @@ try {
       Username: username,
     }),
   );
+
+  const userPool = new CognitoUserPool({
+    UserPoolId: userPoolId,
+    ClientId: clientId,
+  });
+  const cognitoUser = new CognitoUser({ Username: username, Pool: userPool });
+  const session = await new Promise((resolve, reject) => {
+    cognitoUser.authenticateUser(
+      new AuthenticationDetails({ Username: username, Password: password }),
+      {
+        onSuccess: resolve,
+        onFailure: reject,
+        newPasswordRequired: () =>
+          reject(new Error("Temporary test user unexpectedly requires a new password")),
+      },
+    );
+  });
+  const idToken = session.getIdToken().getJwtToken();
+
+  const apiResponse = await fetch(`${apiBaseUrl}/patient/me`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  const apiProfile = await apiResponse.json();
+
+  if (apiResponse.status !== 200) {
+    throw new Error(
+      `GET /patient/me returned ${apiResponse.status}: ${JSON.stringify(apiProfile)}`,
+    );
+  }
+  if (
+    apiProfile.userId !== userSub ||
+    apiProfile.email !== username ||
+    apiProfile.givenName !== "Integration" ||
+    apiProfile.familyName !== "Test"
+  ) {
+    throw new Error(
+      `API profile contents did not match expected values: ${JSON.stringify(apiProfile)}`,
+    );
+  }
+  console.log("GET /patient/me returned the expected profile");
 
   let profile;
   for (let attempt = 0; attempt < 10; attempt += 1) {

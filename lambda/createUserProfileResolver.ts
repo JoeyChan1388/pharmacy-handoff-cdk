@@ -16,7 +16,7 @@ const profileCreationSources = new Set([
 ]);
 
 /**
- * CreateUserProfileResolverHandler.ts
+ * CreateUserProfileResolver Handler
  *
  * Triggered by the PostConfirmation event in Cognito.
  * Creates a user profile in the DynamoDB Users table after a user has
