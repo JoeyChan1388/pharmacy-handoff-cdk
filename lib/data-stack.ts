@@ -13,6 +13,7 @@ export class DataStack extends cdk.Stack {
   public readonly usersTable: dynamodb.Table;
   public readonly locationsTable: dynamodb.Table;
   public readonly staffLocationAssignmentsTable: dynamodb.Table;
+  public readonly organizationMembershipsTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -85,6 +86,12 @@ export class DataStack extends cdk.Stack {
         billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       },
     );
+
+    /**
+     * Global Secondary Index for Staff Location Assignments Table
+     *
+     * This GSI allows querying staff members assigned to a specific location.
+     */
     this.staffLocationAssignmentsTable.addGlobalSecondaryIndex({
       indexName: "ByLocation",
       partitionKey: {
@@ -93,6 +100,41 @@ export class DataStack extends cdk.Stack {
       },
       sortKey: {
         name: "userId",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    /**
+     * Organization Memberships Table
+     *
+     * Stores each user's organization-scoped role, such as STAFF or ADMIN.
+     * The GSI supports listing an individual user's organizations.
+     */
+    this.organizationMembershipsTable = new dynamodb.Table(
+      this,
+      "OrganizationMembershipsTable",
+      {
+        tableName: `${id}-OrganizationMembershipsTable`,
+        partitionKey: {
+          name: "organizationId",
+          type: dynamodb.AttributeType.STRING,
+        },
+        sortKey: {
+          name: "userId",
+          type: dynamodb.AttributeType.STRING,
+        },
+        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      },
+    );
+    this.organizationMembershipsTable.addGlobalSecondaryIndex({
+      indexName: "ByUser",
+      partitionKey: {
+        name: "userId",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "organizationId",
         type: dynamodb.AttributeType.STRING,
       },
       projectionType: dynamodb.ProjectionType.ALL,
@@ -108,6 +150,9 @@ export class DataStack extends cdk.Stack {
     organizationsTable.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
     this.locationsTable.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
     this.staffLocationAssignmentsTable.applyRemovalPolicy(
+      cdk.RemovalPolicy.RETAIN,
+    );
+    this.organizationMembershipsTable.applyRemovalPolicy(
       cdk.RemovalPolicy.RETAIN,
     );
   }

@@ -1,7 +1,8 @@
 # Pharmacy Handoff CDK
 
 The app defines project-prefixed Auth, Data, and API stacks. The Data stack
-contains user, organization, location, and staff-location assignment tables.
+contains user, organization, location, organization membership, and
+staff-location assignment tables.
 
 ## Organization Data Model
 
@@ -13,25 +14,33 @@ for locations.
 
 The `StaffLocationAssignments` table uses `userId` as its partition key and
 `locationId` as its sort key. Each item should also include `organizationId`
-and any assignment metadata, such as a role or active status. This supports
-listing a staff member's locations by `userId`, and listing staff at a location
-through the `ByLocation` index. A staff member can have assignments at multiple
-locations, including locations under different organizations if the business
-rules allow it.
+and assignment metadata such as active status. This supports listing a staff
+member's locations by `userId`, and listing staff at a location through the
+`ByLocation` index. A staff member can have assignments at multiple locations.
+
+The `OrganizationMemberships` table uses `organizationId` as its partition key
+and `userId` as its sort key. Store an organization-scoped `role` on each item:
+`STAFF` for a regular staff member and `ADMIN` for someone who manages the whole
+organization. Its `ByUser` index lists the organizations a user belongs to. A
+staff member with role `STAFF` gets access through their location assignments;
+an `ADMIN` gets organization-wide management permissions. The same person can
+have different roles in different organizations.
 
 For example, a location item can have `organizationId: "shoppers"` and
 `locationId: "<location-uuid>"`; the matching assignment item contains that
 same `organizationId` and `locationId` plus the staff member's Cognito `sub` as
-`userId`. API operations that create assignments should verify that the
-organization, location, and staff user exist and that the location belongs to
-the specified organization.
+`userId`. The corresponding membership item has the same `organizationId`,
+`userId`, and a `role` value. API operations must verify that the organization,
+location, and staff user exist, that the location belongs to the organization,
+and that the caller's membership role permits the requested action. Never trust
+a role or organization ID supplied by the client without checking these records.
 
 ## Useful commands
 
 * `npm run build` compiles TypeScript
 * `npm run test` runs tests
-* `cdk deploy --all --profile personal` deploys both stacks
-* `cdk diff --all --profile personal` compares both stacks with AWS
+* `cdk deploy --all --profile personal` deploys all stacks
+* `cdk diff --all --profile personal` compares all stacks with AWS
 * `cdk synth` emits the CloudFormation templates
 
 ## Profile API

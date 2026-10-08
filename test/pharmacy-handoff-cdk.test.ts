@@ -94,8 +94,8 @@ describe("DataStack", () => {
   const stack = new DataStack(app, "PharmacyHandoffData");
   const template = Template.fromStack(stack);
 
-  test("creates the user and organization tables with on-demand billing", () => {
-    template.resourceCountIs("AWS::DynamoDB::Table", 4);
+  test("creates all data tables with on-demand billing", () => {
+    template.resourceCountIs("AWS::DynamoDB::Table", 5);
 
     template.hasResourceProperties("AWS::DynamoDB::Table", {
       TableName: "PharmacyHandoffData-UsersTable",
@@ -148,6 +148,29 @@ describe("DataStack", () => {
         },
       ],
     });
+
+    template.hasResourceProperties("AWS::DynamoDB::Table", {
+      TableName: "PharmacyHandoffData-OrganizationMembershipsTable",
+      BillingMode: "PAY_PER_REQUEST",
+      AttributeDefinitions: [
+        { AttributeName: "organizationId", AttributeType: "S" },
+        { AttributeName: "userId", AttributeType: "S" },
+      ],
+      KeySchema: [
+        { AttributeName: "organizationId", KeyType: "HASH" },
+        { AttributeName: "userId", KeyType: "RANGE" },
+      ],
+      GlobalSecondaryIndexes: [
+        {
+          IndexName: "ByUser",
+          KeySchema: [
+            { AttributeName: "userId", KeyType: "HASH" },
+            { AttributeName: "organizationId", KeyType: "RANGE" },
+          ],
+          Projection: { ProjectionType: "ALL" },
+        },
+      ],
+    });
   });
 
   test("retains both tables when the stack is deleted or replaced", () => {
@@ -180,6 +203,14 @@ describe("DataStack", () => {
       UpdateReplacePolicy: "Retain",
       Properties: Match.objectLike({
         TableName: "PharmacyHandoffData-StaffLocationAssignmentsTable",
+      }),
+    });
+
+    template.hasResource("AWS::DynamoDB::Table", {
+      DeletionPolicy: "Retain",
+      UpdateReplacePolicy: "Retain",
+      Properties: Match.objectLike({
+        TableName: "PharmacyHandoffData-OrganizationMembershipsTable",
       }),
     });
   });
