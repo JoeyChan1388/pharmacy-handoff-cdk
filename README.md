@@ -59,6 +59,28 @@ After deploying, retrieve the API base URL from the `ApiUrl` output on the
 `PharmacyHandoffApi` stack, then append the endpoint path and send the Cognito
 JWT in an `Authorization: Bearer <token>` header.
 
+Organization admins can invite staff with:
+
+```http
+POST /organizations/{organizationId}/staff
+Authorization: Bearer <staff-pool-id-token>
+Content-Type: application/json
+
+{
+	"email": "new.staff@example.com",
+	"locationIds": ["oshawa"]
+}
+```
+
+The route requires a staff-pool token, and the handler additionally verifies
+that its `sub` has an active `ADMIN` membership in the path organization. It
+checks that every requested location belongs to that organization, creates or
+reuses the Cognito staff account, and records a `STAFF` membership and location
+assignments. New accounts receive a Cognito invitation and remain `INVITED`
+until they finish setting their password. The invitation endpoint is currently
+CORS-enabled for `http://localhost:3000`; change that origin in `api-stack.ts`
+when configuring the deployed frontend domain.
+
 ## Cognito Profile Integration Test
 
 This opt-in test creates a unique patient account, confirms and authenticates

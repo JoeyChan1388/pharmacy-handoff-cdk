@@ -3,6 +3,7 @@ import { Construct } from "constructs";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 
 import * as cdk from "aws-cdk-lib/core";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
@@ -10,8 +11,12 @@ import * as apigateway from "aws-cdk-lib/aws-apigateway";
 
 interface ApiStackProps extends cdk.StackProps {
   usersTable: dynamodb.ITable;
+  locationsTable: dynamodb.ITable;
   staffUserPool: cognito.IUserPool;
   patientUserPool: cognito.IUserPool;
+  organizationsTable: dynamodb.ITable;
+  organizationMembershipsTable: dynamodb.ITable;
+  staffLocationAssignmentsTable: dynamodb.ITable;
 }
 
 /**
@@ -35,7 +40,7 @@ export class ApiStack extends cdk.Stack {
       restApiName: `${id}-Api`,
       defaultCorsPreflightOptions: {
         allowOrigins: ["http://localhost:3000"],
-        allowMethods: ["GET", "OPTIONS"],
+        allowMethods: ["GET", "POST", "OPTIONS"],
         allowHeaders: ["Authorization", "Content-Type"],
       },
     });
@@ -94,8 +99,71 @@ export class ApiStack extends cdk.Stack {
     // Grant read permissions to the UserProfileResolver Lambda Function
     props.usersTable.grantReadData(getUserProfileResolver);
 
+    // Create a Lambda integration for the GetUserProfileResolver
     const integration = new apigateway.LambdaIntegration(
       getUserProfileResolver,
+    );
+
+    /**
+     * InviteOrganizationStaff Lambda Function
+     * 
+     * This Lambda function is responsible for inviting new staff members to an
+     * organization. It creates a new user in the Cognito Staff User Pool and 
+     * adds the user to the DynamoDB Users table.
+     */
+    const inviteStaff = new NodejsFunction(this, "InviteOrganizationStaff", {
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: join(__dirname, "../lambda/inviteOrganizationStaff.ts"),
+      handler: "handler",
+      environment: {
+        STAFF_USER_POOL_ID: props.staffUserPool.userPoolId,
+        USERS_TABLE_NAME: props.usersTable.tableName,
+        ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
+        LOCATIONS_TABLE_NAME: props.locationsTable.tableName,
+        STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME:
+          props.staffLocationAssignmentsTable.tableName,
+        ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
+          props.organizationMembershipsTable.tableName,
+        ALLOWED_ORIGIN: "http://localhost:3000",
+      },
+    });
+
+    /**
+     * Iam Policies for InviteOrganizationStaff Lambda Function
+     */
+    inviteStaff.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser"],
+        resources: [props.staffUserPool.userPoolArn],
+      }),
+    );
+    inviteStaff.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["dynamodb:GetItem"],
+        resources: [
+          props.organizationsTable.tableArn,
+          props.locationsTable.tableArn,
+          props.organizationMembershipsTable.tableArn,
+        ],
+      }),
+    );
+    inviteStaff.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["dynamodb:UpdateItem"],
+        resources: [props.usersTable.tableArn],
+      }),
+    );
+    inviteStaff.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["dynamodb:UpdateItem"],
+        resources: [props.organizationMembershipsTable.tableArn],
+      }),
+    );
+    inviteStaff.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["dynamodb:PutItem"],
+        resources: [props.staffLocationAssignmentsTable.tableArn],
+      }),
     );
 
     /**
@@ -107,6 +175,14 @@ export class ApiStack extends cdk.Stack {
      * /patient/me Resource
      */
     const patientMe = api.root.addResource("patient").addResource("me");
+
+    /**
+     * /organizations/{organizationId}/staff Resource
+     */
+    const organizationStaff = api.root
+      .addResource("organizations")
+      .addResource("{organizationId}")
+      .addResource("staff");
 
     /**
      * GET /staff/me and GET /patient/me Methods
@@ -122,5 +198,22 @@ export class ApiStack extends cdk.Stack {
       authorizationType: apigateway.AuthorizationType.COGNITO,
       authorizer: patientAuthorizer,
     });
+
+    /**
+     * POST /organizations/{organizationId}/staff Method
+     *
+     * This method is protected by the staff Cognito authorizer and will allow
+     * staff members to invite other staff members to join the organization.
+     * The Lambda function will handle the invitation process and create a new
+     * user profile in the DynamoDB users table.
+     */
+    organizationStaff.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(inviteStaff),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
   }
 }

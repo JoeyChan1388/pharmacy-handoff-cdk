@@ -1,5 +1,6 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
@@ -31,6 +32,7 @@ interface CognitoAuthorizerClaims {
 export const handler = async (
   event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> => {
+  // Extract the user ID from the Cognito authorizer claims from the event.
   const authorizer = event.requestContext.authorizer as
     | CognitoAuthorizerClaims
     | undefined;

@@ -224,6 +224,10 @@ describe("ApiStack", () => {
   });
   const apiStack = new ApiStack(app, "ApiTestApi", {
     usersTable: dataStack.usersTable,
+    organizationsTable: dataStack.organizationsTable,
+    locationsTable: dataStack.locationsTable,
+    staffLocationAssignmentsTable: dataStack.staffLocationAssignmentsTable,
+    organizationMembershipsTable: dataStack.organizationMembershipsTable,
     staffUserPool: authStack.staffUserPool,
     patientUserPool: authStack.patientUserPool,
   });
@@ -260,7 +264,7 @@ describe("ApiStack", () => {
   });
 
   test("uses one profile Lambda with read-only access to the users table", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 1);
+    template.resourceCountIs("AWS::Lambda::Function", 2);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Runtime: "nodejs24.x",
       Handler: "index.handler",
@@ -277,6 +281,50 @@ describe("ApiStack", () => {
           Match.objectLike({
             Action: Match.arrayWith(["dynamodb:GetItem"]),
             Effect: "Allow",
+          }),
+        ]),
+      },
+    });
+  });
+
+  test("creates an organization staff invitation endpoint protected by staff Cognito", () => {
+    const postMethods = Object.values(
+      template.findResources("AWS::ApiGateway::Method"),
+    ).filter(
+      (method) =>
+        (method.Properties as { HttpMethod?: string }).HttpMethod === "POST",
+    );
+
+    expect(postMethods).toHaveLength(1);
+    expect(postMethods[0].Properties).toMatchObject({
+      AuthorizationType: "COGNITO_USER_POOLS",
+    });
+    expect(
+      (postMethods[0].Properties as { AuthorizerId?: unknown }).AuthorizerId,
+    ).toBeDefined();
+  });
+
+  test("gives the invite Lambda scoped Cognito and table permissions", () => {
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.objectLike({
+          STAFF_USER_POOL_ID: Match.anyValue(),
+          ORGANIZATION_MEMBERSHIPS_TABLE_NAME: Match.anyValue(),
+          STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME: Match.anyValue(),
+        }),
+      },
+    });
+
+    template.hasResourceProperties("AWS::IAM::Policy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith([
+              "cognito-idp:AdminCreateUser",
+              "cognito-idp:AdminGetUser",
+            ]),
+            Effect: "Allow",
+            Resource: Match.anyValue(),
           }),
         ]),
       },

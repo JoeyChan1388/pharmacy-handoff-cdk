@@ -12,9 +12,10 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 export class DataStack extends cdk.Stack {
   public readonly usersTable: dynamodb.Table;
   public readonly locationsTable: dynamodb.Table;
-  public readonly staffLocationAssignmentsTable: dynamodb.Table;
+  public readonly organizationsTable: dynamodb.Table;
   public readonly organizationMembershipsTable: dynamodb.Table;
-
+  public readonly staffLocationAssignmentsTable: dynamodb.Table;
+  
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
@@ -36,7 +37,7 @@ export class DataStack extends cdk.Stack {
      * This DynamoDB table stores information about organizations, organizations
      * can contain multiple pharmacy locations.
      */
-    const organizationsTable = new dynamodb.Table(this, "OrganizationsTable", {
+    this.organizationsTable = new dynamodb.Table(this, "OrganizationsTable", {
       tableName: `${id}-OrganizationsTable`,
       partitionKey: {
         name: "organizationId",
@@ -147,7 +148,7 @@ export class DataStack extends cdk.Stack {
      * is not deleted when the stack is deleted.
      */
     this.usersTable.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
-    organizationsTable.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
+    this.organizationsTable.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
     this.locationsTable.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
     this.staffLocationAssignmentsTable.applyRemovalPolicy(
       cdk.RemovalPolicy.RETAIN,
