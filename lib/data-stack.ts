@@ -1,5 +1,6 @@
-import * as cdk from "aws-cdk-lib/core";
 import { Construct } from "constructs";
+
+import * as cdk from "aws-cdk-lib/core";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 
 /**

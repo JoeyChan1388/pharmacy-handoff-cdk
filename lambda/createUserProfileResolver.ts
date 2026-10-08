@@ -1,5 +1,5 @@
-import type { PostConfirmationTriggerEvent } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import type { PostConfirmationTriggerEvent } from "aws-lambda";
 import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
 const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));

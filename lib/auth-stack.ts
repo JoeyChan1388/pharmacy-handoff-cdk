@@ -1,11 +1,12 @@
-import * as cdk from "aws-cdk-lib/core";
-import { Construct } from "constructs";
 import { join } from "node:path";
-import * as lambda from "aws-cdk-lib/aws-lambda";
+import { Construct } from "constructs";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+
+import * as cdk from "aws-cdk-lib/core";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as cognito from "aws-cdk-lib/aws-cognito";
-import * as cognitoIdentityPool from "aws-cdk-lib/aws-cognito-identitypool";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as cognitoIdentityPool from "aws-cdk-lib/aws-cognito-identitypool";
 
 interface AuthStackProps extends cdk.StackProps {
   usersTable: dynamodb.ITable;
@@ -17,10 +18,16 @@ interface AuthStackProps extends cdk.StackProps {
  * This stack is responsible for creating the Cognito resources.
  */
 export class AuthStack extends cdk.Stack {
+  public readonly staffUserPool: cognito.UserPool;
+  public readonly patientUserPool: cognito.UserPool;
+
   constructor(scope: Construct, id: string, props: AuthStackProps) {
     super(scope, id, props);
 
-    const staffUserPool = new cognito.UserPool(this, "StaffUserPool", {
+    /**
+     * Staff User Pool
+     */
+    this.staffUserPool = new cognito.UserPool(this, "StaffUserPool", {
       userPoolName: `${id}-StaffUserPool`,
       selfSignUpEnabled: false,
       signInAliases: {
@@ -31,7 +38,10 @@ export class AuthStack extends cdk.Stack {
       },
     });
 
-    const patientUserPool = new cognito.UserPool(this, "PatientUserPool", {
+    /**
+     * Patient User Pool
+     */
+    this.patientUserPool = new cognito.UserPool(this, "PatientUserPool", {
       userPoolName: `${id}-PatientUserPool`,
       selfSignUpEnabled: true,
       signInAliases: {
@@ -42,21 +52,25 @@ export class AuthStack extends cdk.Stack {
       },
     });
 
+    /**
+     * User Pool Clients
+     */
     new cognito.UserPoolClient(this, "StaffUserPoolClient", {
-      userPool: staffUserPool,
+      userPool: this.staffUserPool,
       generateSecret: false,
     });
-
     new cognito.UserPoolClient(this, "PatientUserPoolClient", {
-      userPool: patientUserPool,
+      userPool: this.patientUserPool,
       generateSecret: false,
     });
 
+    /**
+     * Identity Pools
+     */
     new cognitoIdentityPool.IdentityPool(this, "StaffIdentityPool", {
       identityPoolName: `${id}-StaffIdentityPool`,
       allowUnauthenticatedIdentities: false,
     });
-
     new cognitoIdentityPool.IdentityPool(this, "PatientIdentityPool", {
       identityPoolName: `${id}-PatientIdentityPool`,
       allowUnauthenticatedIdentities: false,
@@ -64,26 +78,36 @@ export class AuthStack extends cdk.Stack {
 
     /**
      * CreateUserProfileResolver
-    *
-    * This Lambda function will be responsible for creating user profiles
-    * in the DynamoDB table when a new user is created in the Cognito
+     *
+     * This Lambda function will be responsible for creating user profiles
+     * in the DynamoDB table when a new user is created in the Cognito
      * User Pool.
      */
-    const createUserProfileResolver = new NodejsFunction(this, "CreateUserProfileResolver", {
-      runtime: lambda.Runtime.NODEJS_24_X,
-      entry: join(__dirname, "../lambda/createUserProfileResolver.ts"),
-      handler: "handler",
-      environment: {
-        USERS_TABLE_NAME: props.usersTable.tableName,
+    const createUserProfileResolver = new NodejsFunction(
+      this,
+      "CreateUserProfileResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(__dirname, "../lambda/createUserProfileResolver.ts"),
+        handler: "handler",
+        environment: {
+          USERS_TABLE_NAME: props.usersTable.tableName,
+        },
       },
-    });
+    );
     props.usersTable.grantWriteData(createUserProfileResolver);
 
     /**
-    * Attach the Lambda function to the PostConfirmation trigger of both
+     * Attach the Lambda function to the PostConfirmation trigger of both
      * user pools.
      */
-    staffUserPool.addTrigger(cognito.UserPoolOperation.POST_CONFIRMATION, createUserProfileResolver);
-    patientUserPool.addTrigger(cognito.UserPoolOperation.POST_CONFIRMATION, createUserProfileResolver);
+    this.staffUserPool.addTrigger(
+      cognito.UserPoolOperation.POST_CONFIRMATION,
+      createUserProfileResolver,
+    );
+    this.patientUserPool.addTrigger(
+      cognito.UserPoolOperation.POST_CONFIRMATION,
+      createUserProfileResolver,
+    );
   }
 }

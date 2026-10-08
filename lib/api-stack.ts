@@ -1,0 +1,120 @@
+import { join } from "node:path";
+import { Construct } from "constructs";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+
+import * as cdk from "aws-cdk-lib/core";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as cognito from "aws-cdk-lib/aws-cognito";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as apigateway from "aws-cdk-lib/aws-apigateway";
+
+interface ApiStackProps extends cdk.StackProps {
+  usersTable: dynamodb.ITable;
+  staffUserPool: cognito.IUserPool;
+  patientUserPool: cognito.IUserPool;
+}
+
+/**
+ * ApiStack
+ *
+ * This stack is responsible for creating the API Gateway resources.
+ * The API Gateway will be used to expose the Lambda functions to the
+ * front-end applications.
+ */
+export class ApiStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props: ApiStackProps) {
+    super(scope, id, props);
+
+    /**
+     * PharmacyHandoffApi
+     * 
+     * Primary API Gateway responsible for setting up API endpoints for both
+     * staff and patients.
+     */
+    const api = new apigateway.RestApi(this, "PharmacyHandoffApi", {
+      restApiName: `${id}-Api`,
+      defaultCorsPreflightOptions: {
+        allowOrigins: apigateway.Cors.ALL_ORIGINS,
+        allowMethods: ["GET", "OPTIONS"],
+        allowHeaders: ["Authorization", "Content-Type"],
+      },
+    });
+
+    /**
+     * ApiUrl Output
+     *
+     * This output will display the base URL for the API Gateway in the
+     * CloudFormation stack outputs. It can be used to access the API
+     * endpoints from the front-end applications.
+     */
+    new cdk.CfnOutput(this, "ApiUrl", {
+      value: api.url,
+      description: "Base URL for the Pharmacy Handoff API",
+    });
+
+    /**
+     * Cognito authorizers for staff and patients
+     */
+    const staffAuthorizer = new apigateway.CognitoUserPoolsAuthorizer(
+      this,
+      "StaffAuthorizer",
+      { cognitoUserPools: [props.staffUserPool] },
+    );
+
+    /**
+     * Patient authorizer for the API Gateway
+     */
+    const patientAuthorizer = new apigateway.CognitoUserPoolsAuthorizer(
+      this,
+      "PatientAuthorizer",
+      { cognitoUserPools: [props.patientUserPool] },
+    );
+
+    /**
+     * GetUserProfileResolver
+     * 
+     * This Lambda function is responsible for retrieving the user profile 
+     * information from the DynamoDB users table. It is used by both the staff
+     * and patient endpoints. The Lambda function is granted read-only access 
+     * to the users table.
+     */
+    const getUserProfileResolver = new NodejsFunction(this, "getUserProfileResolver", {
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: join(__dirname, "../lambda/getUserProfileResolver.ts"),
+      handler: "handler",
+      environment: {
+        USERS_TABLE_NAME: props.usersTable.tableName,
+      },
+    });
+ 
+    // Grant read permissions to the Lambda Function
+    props.usersTable.grantReadData(getUserProfileResolver);
+
+    const integration = new apigateway.LambdaIntegration(getUserProfileResolver);
+    
+    /**
+     * /staff/me Resource
+     */
+    const staffMe = api.root.addResource("staff").addResource("me");
+    
+    /**
+     * /patient/me Resource
+     */
+    const patientMe = api.root.addResource("patient").addResource("me");
+
+    /**
+     * GET /staff/me and GET /patient/me Methods
+     *
+     * These methods are protected by Cognito authorizers and will return the
+     * user profile information for the authenticated user.
+     */
+    staffMe.addMethod("GET", integration, {
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+      authorizer: staffAuthorizer,
+    });
+    patientMe.addMethod("GET", integration, {
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+      authorizer: patientAuthorizer,
+    });
+  }
+}

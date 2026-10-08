@@ -1,7 +1,7 @@
 # Pharmacy Handoff CDK
 
-The app defines project-prefixed Auth and Data stacks. The Data stack is ready
-for future DynamoDB and S3 resources.
+The app defines project-prefixed Auth, Data, and API stacks. The Data stack
+contains user and organization tables.
 
 ## Useful commands
 
@@ -10,6 +10,22 @@ for future DynamoDB and S3 resources.
 * `cdk deploy --all --profile personal` deploys both stacks
 * `cdk diff --all --profile personal` compares both stacks with AWS
 * `cdk synth` emits the CloudFormation templates
+
+## Profile API
+
+The API stack provides two Cognito-protected endpoints:
+
+* `GET /staff/me` accepts a token from the staff user pool.
+* `GET /patient/me` accepts a token from the patient user pool.
+
+Both return the caller's profile, selected by the authenticated token's `sub`
+claim. They do not accept a user ID from the request. A missing profile returns
+`404`; API Gateway rejects missing or invalid Cognito tokens. The API allows
+browser requests from any origin; authorization is still enforced by Cognito.
+
+After deploying, retrieve the API base URL from the `ApiUrl` output on the
+`PharmacyHandoffApi` stack, then append the endpoint path and send the Cognito
+JWT in an `Authorization: Bearer <token>` header.
 
 ## Cognito Profile Integration Test
 
