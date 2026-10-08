@@ -1,7 +1,30 @@
 # Pharmacy Handoff CDK
 
 The app defines project-prefixed Auth, Data, and API stacks. The Data stack
-contains user and organization tables.
+contains user, organization, location, and staff-location assignment tables.
+
+## Organization Data Model
+
+An organization represents the pharmacy company; a location represents one
+branch belonging to it. The `Locations` table uses `organizationId` as its
+partition key and `locationId` as its sort key, so all branches for an
+organization can be queried together. Use globally unique IDs such as UUIDs
+for locations.
+
+The `StaffLocationAssignments` table uses `userId` as its partition key and
+`locationId` as its sort key. Each item should also include `organizationId`
+and any assignment metadata, such as a role or active status. This supports
+listing a staff member's locations by `userId`, and listing staff at a location
+through the `ByLocation` index. A staff member can have assignments at multiple
+locations, including locations under different organizations if the business
+rules allow it.
+
+For example, a location item can have `organizationId: "shoppers"` and
+`locationId: "<location-uuid>"`; the matching assignment item contains that
+same `organizationId` and `locationId` plus the staff member's Cognito `sub` as
+`userId`. API operations that create assignments should verify that the
+organization, location, and staff user exist and that the location belongs to
+the specified organization.
 
 ## Useful commands
 

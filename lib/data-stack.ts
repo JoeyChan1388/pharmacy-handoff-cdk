@@ -11,6 +11,8 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
  */
 export class DataStack extends cdk.Stack {
   public readonly usersTable: dynamodb.Table;
+  public readonly locationsTable: dynamodb.Table;
+  public readonly staffLocationAssignmentsTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -43,6 +45,60 @@ export class DataStack extends cdk.Stack {
     });
 
     /**
+     * Locations Table
+     *
+     * Locations are scoped to an organization. The sort key allows listing
+     * every pharmacy location that belongs to an organization.
+     */
+    this.locationsTable = new dynamodb.Table(this, "LocationsTable", {
+      tableName: `${id}-LocationsTable`,
+      partitionKey: {
+        name: "organizationId",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "locationId",
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+    });
+
+    /**
+     * Staff Location Assignments Table
+     *
+     * The primary key lists locations for a staff member. The GSI lists
+     * staff assigned to a location.
+     */
+    this.staffLocationAssignmentsTable = new dynamodb.Table(
+      this,
+      "StaffLocationAssignmentsTable",
+      {
+        tableName: `${id}-StaffLocationAssignmentsTable`,
+        partitionKey: {
+          name: "userId",
+          type: dynamodb.AttributeType.STRING,
+        },
+        sortKey: {
+          name: "locationId",
+          type: dynamodb.AttributeType.STRING,
+        },
+        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      },
+    );
+    this.staffLocationAssignmentsTable.addGlobalSecondaryIndex({
+      indexName: "ByLocation",
+      partitionKey: {
+        name: "locationId",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "userId",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    /**
      * Removal Policies
      *
      * The tables' removal policies are set to RETAIN to ensure that the data
@@ -50,5 +106,9 @@ export class DataStack extends cdk.Stack {
      */
     this.usersTable.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
     organizationsTable.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
+    this.locationsTable.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
+    this.staffLocationAssignmentsTable.applyRemovalPolicy(
+      cdk.RemovalPolicy.RETAIN,
+    );
   }
 }

@@ -94,8 +94,8 @@ describe("DataStack", () => {
   const stack = new DataStack(app, "PharmacyHandoffData");
   const template = Template.fromStack(stack);
 
-  test("creates the users and organizations tables with on-demand billing", () => {
-    template.resourceCountIs("AWS::DynamoDB::Table", 2);
+  test("creates the user and organization tables with on-demand billing", () => {
+    template.resourceCountIs("AWS::DynamoDB::Table", 4);
 
     template.hasResourceProperties("AWS::DynamoDB::Table", {
       TableName: "PharmacyHandoffData-UsersTable",
@@ -111,6 +111,42 @@ describe("DataStack", () => {
         { AttributeName: "organizationId", AttributeType: "S" },
       ],
       KeySchema: [{ AttributeName: "organizationId", KeyType: "HASH" }],
+    });
+
+    template.hasResourceProperties("AWS::DynamoDB::Table", {
+      TableName: "PharmacyHandoffData-LocationsTable",
+      BillingMode: "PAY_PER_REQUEST",
+      AttributeDefinitions: [
+        { AttributeName: "organizationId", AttributeType: "S" },
+        { AttributeName: "locationId", AttributeType: "S" },
+      ],
+      KeySchema: [
+        { AttributeName: "organizationId", KeyType: "HASH" },
+        { AttributeName: "locationId", KeyType: "RANGE" },
+      ],
+    });
+
+    template.hasResourceProperties("AWS::DynamoDB::Table", {
+      TableName: "PharmacyHandoffData-StaffLocationAssignmentsTable",
+      BillingMode: "PAY_PER_REQUEST",
+      AttributeDefinitions: [
+        { AttributeName: "userId", AttributeType: "S" },
+        { AttributeName: "locationId", AttributeType: "S" },
+      ],
+      KeySchema: [
+        { AttributeName: "userId", KeyType: "HASH" },
+        { AttributeName: "locationId", KeyType: "RANGE" },
+      ],
+      GlobalSecondaryIndexes: [
+        {
+          IndexName: "ByLocation",
+          KeySchema: [
+            { AttributeName: "locationId", KeyType: "HASH" },
+            { AttributeName: "userId", KeyType: "RANGE" },
+          ],
+          Projection: { ProjectionType: "ALL" },
+        },
+      ],
     });
   });
 
@@ -128,6 +164,22 @@ describe("DataStack", () => {
       UpdateReplacePolicy: "Retain",
       Properties: Match.objectLike({
         TableName: "PharmacyHandoffData-OrganizationsTable",
+      }),
+    });
+
+    template.hasResource("AWS::DynamoDB::Table", {
+      DeletionPolicy: "Retain",
+      UpdateReplacePolicy: "Retain",
+      Properties: Match.objectLike({
+        TableName: "PharmacyHandoffData-LocationsTable",
+      }),
+    });
+
+    template.hasResource("AWS::DynamoDB::Table", {
+      DeletionPolicy: "Retain",
+      UpdateReplacePolicy: "Retain",
+      Properties: Match.objectLike({
+        TableName: "PharmacyHandoffData-StaffLocationAssignmentsTable",
       }),
     });
   });
