@@ -1,14 +1,12 @@
-# Welcome to your CDK TypeScript project
+# Pharmacy Handoff CDK
 
-This is a blank project for CDK development with TypeScript.
-
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
+The app defines project-prefixed Auth and Data stacks. The Data stack is ready
+for future DynamoDB and S3 resources.
 
 ## Useful commands
 
-* `npm run build`   compile typescript to js
-* `npm run watch`   watch for changes and compile
-* `npm run test`    perform the jest unit tests
-* `npx cdk deploy`  deploy this stack to your default AWS account/region
-* `npx cdk diff`    compare deployed stack with current state
-* `npx cdk synth`   emits the synthesized CloudFormation template
+* `npm run build` compiles TypeScript
+* `npm run test` runs tests
+* `cdk deploy --all --profile personal` deploys both stacks
+* `cdk diff --all --profile personal` compares both stacks with AWS
+* `cdk synth` emits the CloudFormation templates

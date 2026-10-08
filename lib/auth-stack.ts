@@ -13,7 +13,7 @@ export class AuthStack extends cdk.Stack {
     super(scope, id, props);
 
     const staffUserPool = new cognito.UserPool(this, "StaffUserPool", {
-      userPoolName: "StaffUserPool",
+      userPoolName: `${id}-StaffUserPool`,
       selfSignUpEnabled: false,
       signInAliases: {
         email: true,
@@ -24,7 +24,7 @@ export class AuthStack extends cdk.Stack {
     });
 
     const patientUserPool = new cognito.UserPool(this, "PatientUserPool", {
-      userPoolName: "PatientUserPool",
+      userPoolName: `${id}-PatientUserPool`,
       selfSignUpEnabled: true,
       signInAliases: {
         email: true,
@@ -45,12 +45,12 @@ export class AuthStack extends cdk.Stack {
     });
 
     new cognitoIdentityPool.IdentityPool(this, "StaffIdentityPool", {
-      identityPoolName: "StaffIdentityPool",
+      identityPoolName: `${id}-StaffIdentityPool`,
       allowUnauthenticatedIdentities: false,
     });
 
     new cognitoIdentityPool.IdentityPool(this, "PatientIdentityPool", {
-      identityPoolName: "PatientIdentityPool",
+      identityPoolName: `${id}-PatientIdentityPool`,
       allowUnauthenticatedIdentities: false,
     });
   }
