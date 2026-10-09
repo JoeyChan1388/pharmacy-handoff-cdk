@@ -30,7 +30,14 @@ export class ApiStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
 
-    const staffWebOrigins = [
+    /**
+     * Allowed Origins
+     *
+     * This set of allowed origins will be used to configure CORS for the
+     * API Gateway. It will allow requests from the front-end applications
+     * running on localhost and the production domains.
+     */
+    const AllowedWebOrigins = [
       "http://localhost:3000",
       "http://127.0.0.1:3000",
     ];
@@ -44,7 +51,7 @@ export class ApiStack extends cdk.Stack {
     const api = new apigateway.RestApi(this, "PharmacyHandoffApi", {
       restApiName: `${id}-Api`,
       defaultCorsPreflightOptions: {
-        allowOrigins: staffWebOrigins,
+        allowOrigins: AllowedWebOrigins,
         allowMethods: ["GET", "POST", "OPTIONS"],
         allowHeaders: ["Authorization", "Content-Type"],
       },
@@ -97,7 +104,7 @@ export class ApiStack extends cdk.Stack {
         handler: "handler",
         environment: {
           USERS_TABLE_NAME: props.usersTable.tableName,
-          ALLOWED_ORIGINS: staffWebOrigins.join(","),
+          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
         },
       },
     );
@@ -112,30 +119,36 @@ export class ApiStack extends cdk.Stack {
 
     /**
      * InviteOrganizationStaff Lambda Function
-     * 
+     *
      * This Lambda function is responsible for inviting new staff members to an
-     * organization. It creates a new user in the Cognito Staff User Pool and 
+     * organization. It creates a new user in the Cognito Staff User Pool and
      * adds the user to the DynamoDB Users table.
      */
-    const inviteStaff = new NodejsFunction(this, "InviteOrganizationStaffResolver", {
-      runtime: lambda.Runtime.NODEJS_24_X,
-      entry: join(__dirname, "../lambda/inviteOrganizationStaffResolver.ts"),
-      handler: "handler",
-      environment: {
-        STAFF_USER_POOL_ID: props.staffUserPool.userPoolId,
-        USERS_TABLE_NAME: props.usersTable.tableName,
-        ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
-        LOCATIONS_TABLE_NAME: props.locationsTable.tableName,
-        STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME:
-          props.staffLocationAssignmentsTable.tableName,
-        ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
-          props.organizationMembershipsTable.tableName,
-        ALLOWED_ORIGINS: staffWebOrigins.join(","),
+    const inviteStaff = new NodejsFunction(
+      this,
+      "InviteOrganizationStaffResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(__dirname, "../lambda/inviteOrganizationStaffResolver.ts"),
+        handler: "handler",
+        description:
+          "Lambda function to invite staff members to an organization",
+        environment: {
+          STAFF_USER_POOL_ID: props.staffUserPool.userPoolId,
+          USERS_TABLE_NAME: props.usersTable.tableName,
+          ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
+          LOCATIONS_TABLE_NAME: props.locationsTable.tableName,
+          STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME:
+            props.staffLocationAssignmentsTable.tableName,
+          ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
+            props.organizationMembershipsTable.tableName,
+          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
+        },
       },
-    });
+    );
 
     /**
-     * Iam Policies for InviteOrganizationStaff Lambda Function
+     * IAM Policies for InviteOrganizationStaff Lambda Function
      */
     inviteStaff.addToRolePolicy(
       new iam.PolicyStatement({

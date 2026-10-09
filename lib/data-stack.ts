@@ -128,6 +128,12 @@ export class DataStack extends cdk.Stack {
         billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       },
     );
+
+    /**
+     * Global Secondary Index for Organization Memberships Table
+     *
+     * This GSI allows querying the organizations a user belongs to.
+     */
     this.organizationMembershipsTable.addGlobalSecondaryIndex({
       indexName: "ByUser",
       partitionKey: {

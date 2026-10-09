@@ -10,29 +10,17 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+
+import type {
+  CognitoAuthorizerClaims,
+  CognitoUserAttribute,
+  InviteOrganizationStaffRequest,
+} from "./types";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 const region = process.env.AWS_REGION;
 const cognito = new CognitoIdentityProviderClient({ region });
 const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({ region }));
-
-/**
- * CognitoAuthorizerClaims
- * 
- * This interface represents the structure of the claims object that is 
- * expected to be present in the authorizer context of an API Gateway event
- * when using Cognito as the authorizer.
- */
-interface CognitoAuthorizerClaims {
-  claims?: {
-    sub?: string;
-  };
-}
-
-interface InviteRequest {
-  email?: unknown;
-  locationIds?: unknown;
-}
 
 const allowedOrigins = new Set(
   (process.env.ALLOWED_ORIGINS ?? process.env.ALLOWED_ORIGIN ?? "")
@@ -40,6 +28,15 @@ const allowedOrigins = new Set(
     .filter(Boolean),
 );
 
+/**
+ * Generates the appropriate response headers for the API Gateway response
+ * based on the request's origin and the allowed origins.
+ *
+ * @param statusCode The HTTP status code for the response.
+ * @param body The body of the response.
+ * @param origin The origin of the request.
+ * @returns The API Gateway proxy result.
+ */
 function response(
   statusCode: number,
   body: Record<string, unknown>,
@@ -76,13 +73,22 @@ export const handler = async (
   event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> => {
   // Extract the caller's user ID and the organization ID from the event
-  const claims = event.requestContext.authorizer as CognitoAuthorizerClaims | undefined;
+  const claims = event.requestContext.authorizer as
+    | CognitoAuthorizerClaims
+    | undefined;
   const callerUserId = claims?.claims?.sub;
   const organizationId = event.pathParameters?.organizationId;
   const requestOrigin = event.headers.origin ?? event.headers.Origin;
+
+  /**
+   * Create a response function with the appropriate headers
+   */
   const reply = (statusCode: number, body: Record<string, unknown>) =>
     response(statusCode, body, requestOrigin);
 
+  /**
+   * Authorization and Path Parameter Validation
+   */
   if (!callerUserId) return reply(401, { message: "Unauthorized" });
   if (!organizationId) {
     return reply(400, {
@@ -90,6 +96,9 @@ export const handler = async (
     });
   }
 
+  /**
+   * Environment Variable Validation
+   */
   const tableNames = {
     users: process.env.USERS_TABLE_NAME,
     organizations: process.env.ORGANIZATIONS_TABLE_NAME,
@@ -104,6 +113,9 @@ export const handler = async (
     );
   }
 
+  /**
+   * Check if the caller is an organization admin
+   */
   const membershipResult = await dynamodb.send(
     new GetCommand({
       TableName: tableNames.memberships,
@@ -112,6 +124,7 @@ export const handler = async (
     }),
   );
   const callerMembership = membershipResult.Item;
+
   if (
     callerMembership?.role !== "ADMIN" ||
     callerMembership.status !== "ACTIVE"
@@ -119,6 +132,9 @@ export const handler = async (
     return reply(403, { message: "Organization admin access required" });
   }
 
+  /**
+   * Check if the organization exists
+   */
   const organizationResult = await dynamodb.send(
     new GetCommand({
       TableName: tableNames.organizations,
@@ -130,9 +146,12 @@ export const handler = async (
     return reply(404, { message: "Organization not found" });
   }
 
-  let body: InviteRequest;
+  /**
+   * Request Body Validation
+   */
+  let body: InviteOrganizationStaffRequest;
   try {
-    body = JSON.parse(event.body ?? "") as InviteRequest;
+    body = JSON.parse(event.body ?? "") as InviteOrganizationStaffRequest;
   } catch {
     return reply(400, { message: "Request body must be valid JSON" });
   }
@@ -165,6 +184,9 @@ export const handler = async (
     });
   }
 
+  /**
+   * Check if all provided location IDs belong to the organization
+   */
   const locations = await Promise.all(
     locationIds.map((locationId) =>
       dynamodb.send(
@@ -182,7 +204,10 @@ export const handler = async (
     });
   }
 
-  let userAttributes: Array<{ Name?: string; Value?: string }> | undefined;
+  /**
+   * Create or Retrieve the Staff User in Cognito
+   */
+  let userAttributes: CognitoUserAttribute[] | undefined;
   let userStatus: string | undefined;
   try {
     const existingUser = await cognito.send(
@@ -195,6 +220,9 @@ export const handler = async (
       throw error;
   }
 
+  /**
+   * If the user does not exist, create a new user in Cognito with the provided email.
+   */
   if (!userAttributes) {
     const created = await cognito.send(
       new AdminCreateUserCommand({
@@ -212,6 +240,11 @@ export const handler = async (
   if (!userId)
     throw new Error("Cognito staff user is missing its sub attribute");
 
+  /**
+   * Check if the user is already an organization admin
+   * 
+   * If the user is already an admin, return a 409 Conflict response.
+   */
   const existingMembership = await dynamodb.send(
     new GetCommand({
       TableName: tableNames.memberships,
@@ -228,6 +261,13 @@ export const handler = async (
   const now = new Date().toISOString();
   const status = userStatus === "CONFIRMED" ? "ACTIVE" : "INVITED";
 
+  /**
+   * Update DynamoDB Tables for the Staff Invitation
+   *
+   * This section updates the Users table, Organization Memberships table, and
+   * Staff Location Assignments table to reflect the invitation of the staff
+   * member to the organization.
+   */
   await dynamodb.send(
     new UpdateCommand({
       TableName: tableNames.users,

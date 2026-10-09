@@ -1,27 +1,22 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 
+import type { CognitoAuthorizerClaims } from "./types";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-
-/**
- * CognitoAuthorizerClaims
- * 
- * This interface represents the structure of the claims object that is 
- * expected to be present in the authorizer context of an API Gateway event
- * when using Cognito as the authorizer.
- */
-interface CognitoAuthorizerClaims {
-  claims?: {
-    sub?: string;
-  };
-}
 
 const allowedOrigins = new Set(
   (process.env.ALLOWED_ORIGINS ?? "").split(",").filter(Boolean),
 );
 
+/**
+ * Generates the appropriate response headers for the API Gateway response
+ * based on the request's origin and the allowed origins.
+ *
+ * @param event The API Gateway proxy event.
+ * @returns The response headers.
+ */
 function responseHeaders(event: APIGatewayProxyEvent) {
   const origin = event.headers.origin ?? event.headers.Origin;
   return {
@@ -68,6 +63,10 @@ export const handler = async (
     throw new Error("USERS_TABLE_NAME environment variable is required");
   }
 
+  /**
+   * Retrieve the user profile from the DynamoDB Users table using the user ID.
+   * If the profile is not found, return a 404 response.
+   */
   const result = await dynamodb.send(
     new GetCommand({
       TableName: tableName,

@@ -76,6 +76,11 @@ export class AuthStack extends cdk.Stack {
       generateSecret: false,
     });
 
+    /**
+     * User Pool Domains
+     *
+     * This domain is used for the hosted UI for staff (postman testing)
+     */
     this.staffUserPool.addDomain("StaffHostedUiDomain", {
       cognitoDomain: {
         domainPrefix: "pharmacy-handoff-543908652237",
@@ -108,6 +113,8 @@ export class AuthStack extends cdk.Stack {
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(__dirname, "../lambda/createUserProfileResolver.ts"),
         handler: "handler",
+        description:
+          "Creates a profile in the Users table after a user has confirmed their sign-up.",
         environment: {
           USERS_TABLE_NAME: props.usersTable.tableName,
         },

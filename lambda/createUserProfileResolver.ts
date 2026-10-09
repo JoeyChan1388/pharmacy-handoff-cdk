@@ -1,6 +1,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import type { PostConfirmationTriggerEvent } from "aws-lambda";
 import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+
+import type { PostConfirmationTriggerEvent } from "aws-lambda";
 
 const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
@@ -30,6 +31,7 @@ const profileCreationSources = new Set([
 export const handler = async (
   event: PostConfirmationTriggerEvent,
 ): Promise<PostConfirmationTriggerEvent> => {
+  // See if the trigger source is one of the allowed profile creation sources.
   if (!profileCreationSources.has(event.triggerSource)) {
     return event;
   }
@@ -64,16 +66,29 @@ export const handler = async (
     ["familyName", family_name],
   ] as const;
 
+  /**
+   * Prepare Update Expressions for User Attributes
+   *
+   * This loop constructs the necessary DynamoDB update expressions for each
+   * user attribute that is present. It uses expression attribute names and
+   * values to safely update the user's profile in the Users table.
+   */
   for (const [attribute, value] of profileAttributes) {
     if (value) {
       const nameToken = `#${attribute}`;
       const valueToken = `:${attribute}`;
+
       expressionNames[nameToken] = attribute;
       expressionValues[valueToken] = value;
       updates.push(`${nameToken} = ${valueToken}`);
     }
   }
 
+  /**
+   * Update User Profile in DynamoDB
+   *
+   * This is what actually updates the user profile in the Users table.
+   */
   await dynamodb.send(
     new UpdateCommand({
       TableName: tableName,
