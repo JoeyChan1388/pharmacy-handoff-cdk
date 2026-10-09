@@ -18,6 +18,23 @@ interface CognitoAuthorizerClaims {
   };
 }
 
+const allowedOrigins = new Set(
+  (process.env.ALLOWED_ORIGINS ?? "").split(",").filter(Boolean),
+);
+
+function responseHeaders(event: APIGatewayProxyEvent) {
+  const origin = event.headers.origin ?? event.headers.Origin;
+  return {
+    "Content-Type": "application/json",
+    ...(origin && allowedOrigins.has(origin)
+      ? {
+          "Access-Control-Allow-Origin": origin,
+          Vary: "Origin",
+        }
+      : {}),
+  };
+}
+
 /**
  * GetUserProfileResolver Handler
  *
@@ -41,7 +58,7 @@ export const handler = async (
   if (!userId) {
     return {
       statusCode: 401,
-      headers: { "Content-Type": "application/json" },
+      headers: responseHeaders(event),
       body: JSON.stringify({ message: "Unauthorized" }),
     };
   }
@@ -61,14 +78,14 @@ export const handler = async (
   if (!result.Item) {
     return {
       statusCode: 404,
-      headers: { "Content-Type": "application/json" },
+      headers: responseHeaders(event),
       body: JSON.stringify({ message: "Profile not found" }),
     };
   }
 
   return {
     statusCode: 200,
-    headers: { "Content-Type": "application/json" },
+    headers: responseHeaders(event),
     body: JSON.stringify(result.Item),
   };
 };

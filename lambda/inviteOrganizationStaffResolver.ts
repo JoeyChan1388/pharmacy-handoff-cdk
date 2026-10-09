@@ -34,15 +34,24 @@ interface InviteRequest {
   locationIds?: unknown;
 }
 
+const allowedOrigins = new Set(
+  (process.env.ALLOWED_ORIGINS ?? process.env.ALLOWED_ORIGIN ?? "")
+    .split(",")
+    .filter(Boolean),
+);
+
 function response(
   statusCode: number,
   body: Record<string, unknown>,
+  origin?: string,
 ): APIGatewayProxyResult {
+  const allowedOrigin = origin && allowedOrigins.has(origin) ? origin : "null";
   return {
     statusCode,
     headers: {
       "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": process.env.ALLOWED_ORIGIN ?? "null",
+      "Access-Control-Allow-Origin": allowedOrigin,
+      Vary: "Origin",
       "Access-Control-Allow-Headers": "Authorization,Content-Type",
       "Access-Control-Allow-Methods": "OPTIONS,POST",
     },
@@ -70,10 +79,13 @@ export const handler = async (
   const claims = event.requestContext.authorizer as CognitoAuthorizerClaims | undefined;
   const callerUserId = claims?.claims?.sub;
   const organizationId = event.pathParameters?.organizationId;
+  const requestOrigin = event.headers.origin ?? event.headers.Origin;
+  const reply = (statusCode: number, body: Record<string, unknown>) =>
+    response(statusCode, body, requestOrigin);
 
-  if (!callerUserId) return response(401, { message: "Unauthorized" });
+  if (!callerUserId) return reply(401, { message: "Unauthorized" });
   if (!organizationId) {
-    return response(400, {
+    return reply(400, {
       message: "organizationId path parameter is required",
     });
   }
@@ -104,7 +116,7 @@ export const handler = async (
     callerMembership?.role !== "ADMIN" ||
     callerMembership.status !== "ACTIVE"
   ) {
-    return response(403, { message: "Organization admin access required" });
+    return reply(403, { message: "Organization admin access required" });
   }
 
   const organizationResult = await dynamodb.send(
@@ -115,20 +127,20 @@ export const handler = async (
     }),
   );
   if (!organizationResult.Item) {
-    return response(404, { message: "Organization not found" });
+    return reply(404, { message: "Organization not found" });
   }
 
   let body: InviteRequest;
   try {
     body = JSON.parse(event.body ?? "") as InviteRequest;
   } catch {
-    return response(400, { message: "Request body must be valid JSON" });
+    return reply(400, { message: "Request body must be valid JSON" });
   }
 
   const email =
     typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return response(400, { message: "A valid email address is required" });
+    return reply(400, { message: "A valid email address is required" });
   }
 
   if (
@@ -139,7 +151,7 @@ export const handler = async (
       (locationId) => typeof locationId !== "string" || !locationId.trim(),
     )
   ) {
-    return response(400, {
+    return reply(400, {
       message: "locationIds must contain between 1 and 25 location IDs",
     });
   }
@@ -148,7 +160,7 @@ export const handler = async (
     ...new Set(body.locationIds.map((locationId) => locationId.trim())),
   ];
   if (locationIds.length !== body.locationIds.length) {
-    return response(400, {
+    return reply(400, {
       message: "locationIds must not contain duplicates",
     });
   }
@@ -165,7 +177,7 @@ export const handler = async (
     ),
   );
   if (locations.some((result) => !result.Item)) {
-    return response(400, {
+    return reply(400, {
       message: "Every location must belong to the requested organization",
     });
   }
@@ -208,7 +220,7 @@ export const handler = async (
     }),
   );
   if (existingMembership.Item?.role === "ADMIN") {
-    return response(409, {
+    return reply(409, {
       message: "This user is already an organization admin",
     });
   }
@@ -277,7 +289,7 @@ export const handler = async (
     ),
   );
 
-  return response(201, {
+  return reply(201, {
     userId,
     email,
     organizationId,

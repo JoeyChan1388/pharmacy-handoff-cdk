@@ -30,6 +30,11 @@ export class ApiStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
 
+    const staffWebOrigins = [
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+    ];
+
     /**
      * PharmacyHandoffApi
      *
@@ -39,7 +44,7 @@ export class ApiStack extends cdk.Stack {
     const api = new apigateway.RestApi(this, "PharmacyHandoffApi", {
       restApiName: `${id}-Api`,
       defaultCorsPreflightOptions: {
-        allowOrigins: ["http://localhost:3000"],
+        allowOrigins: staffWebOrigins,
         allowMethods: ["GET", "POST", "OPTIONS"],
         allowHeaders: ["Authorization", "Content-Type"],
       },
@@ -92,6 +97,7 @@ export class ApiStack extends cdk.Stack {
         handler: "handler",
         environment: {
           USERS_TABLE_NAME: props.usersTable.tableName,
+          ALLOWED_ORIGINS: staffWebOrigins.join(","),
         },
       },
     );
@@ -111,9 +117,9 @@ export class ApiStack extends cdk.Stack {
      * organization. It creates a new user in the Cognito Staff User Pool and 
      * adds the user to the DynamoDB Users table.
      */
-    const inviteStaff = new NodejsFunction(this, "InviteOrganizationStaff", {
+    const inviteStaff = new NodejsFunction(this, "InviteOrganizationStaffResolver", {
       runtime: lambda.Runtime.NODEJS_24_X,
-      entry: join(__dirname, "../lambda/inviteOrganizationStaff.ts"),
+      entry: join(__dirname, "../lambda/inviteOrganizationStaffResolver.ts"),
       handler: "handler",
       environment: {
         STAFF_USER_POOL_ID: props.staffUserPool.userPoolId,
@@ -124,7 +130,7 @@ export class ApiStack extends cdk.Stack {
           props.staffLocationAssignmentsTable.tableName,
         ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
           props.organizationMembershipsTable.tableName,
-        ALLOWED_ORIGIN: "http://localhost:3000",
+        ALLOWED_ORIGINS: staffWebOrigins.join(","),
       },
     });
 
