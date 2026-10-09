@@ -265,7 +265,7 @@ describe("ApiStack", () => {
         (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
     );
 
-    expect(methods).toHaveLength(2);
+    expect(methods).toHaveLength(3);
     const authorizerIds = new Set<string>();
     for (const method of methods) {
       const properties = method.Properties as {
@@ -280,7 +280,7 @@ describe("ApiStack", () => {
   });
 
   test("uses one profile Lambda with read-only access to the users table", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 2);
+    template.resourceCountIs("AWS::Lambda::Function", 3);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Runtime: "nodejs24.x",
       Handler: "index.handler",
@@ -297,6 +297,45 @@ describe("ApiStack", () => {
         Statement: Match.arrayWith([
           Match.objectLike({
             Action: Match.arrayWith(["dynamodb:GetItem"]),
+            Effect: "Allow",
+          }),
+        ]),
+      },
+    });
+  });
+
+  test("creates a staff-authenticated organizations and locations endpoint", () => {
+    const getMethods = Object.values(
+      template.findResources("AWS::ApiGateway::Method"),
+    ).filter(
+      (method) =>
+        (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
+    );
+    expect(getMethods).toHaveLength(3);
+    expect(
+      getMethods.every(
+        (method) =>
+          (method.Properties as { AuthorizationType?: string })
+            .AuthorizationType === "COGNITO_USER_POOLS",
+      ),
+    ).toBe(true);
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.objectLike({
+          ORGANIZATIONS_TABLE_NAME: Match.anyValue(),
+          LOCATIONS_TABLE_NAME: Match.anyValue(),
+          ORGANIZATION_MEMBERSHIPS_TABLE_NAME: Match.anyValue(),
+          STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME: Match.anyValue(),
+        }),
+      },
+    });
+
+    template.hasResourceProperties("AWS::IAM::Policy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith(["dynamodb:Query"]),
             Effect: "Allow",
           }),
         ]),

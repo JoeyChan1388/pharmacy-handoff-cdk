@@ -148,6 +148,39 @@ export class ApiStack extends cdk.Stack {
     );
 
     /**
+     * GetStaffOrganizations Lambda Function
+     *
+     * This Lambda function is responsible for retrieving the organizations
+     * and locations that a staff member is associated with.
+     */
+    const getStaffOrganizations = new NodejsFunction(
+      this,
+      "GetStaffOrganizationsResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(__dirname, "../lambda/getStaffOrganizationsResolver.ts"),
+        handler: "handler",
+        environment: {
+          ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
+          LOCATIONS_TABLE_NAME: props.locationsTable.tableName,
+          ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
+            props.organizationMembershipsTable.tableName,
+          STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME:
+            props.staffLocationAssignmentsTable.tableName,
+          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
+        },
+      },
+    );
+
+    /**
+     * Grant Table Read Permissions to GetStaffOrganizations Lambda Function
+     */
+    props.organizationsTable.grantReadData(getStaffOrganizations);
+    props.locationsTable.grantReadData(getStaffOrganizations);
+    props.organizationMembershipsTable.grantReadData(getStaffOrganizations);
+    props.staffLocationAssignmentsTable.grantReadData(getStaffOrganizations);
+
+    /**
      * IAM Policies for InviteOrganizationStaff Lambda Function
      */
     inviteStaff.addToRolePolicy(
@@ -196,6 +229,11 @@ export class ApiStack extends cdk.Stack {
     const patientMe = api.root.addResource("patient").addResource("me");
 
     /**
+     * /staff/me/organizations Resource
+     */
+    const staffOrganizations = staffMe.addResource("organizations");
+
+    /**
      * /organizations/{organizationId}/staff Resource
      */
     const organizationStaff = api.root
@@ -217,6 +255,14 @@ export class ApiStack extends cdk.Stack {
       authorizationType: apigateway.AuthorizationType.COGNITO,
       authorizer: patientAuthorizer,
     });
+    staffOrganizations.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(getStaffOrganizations),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
 
     /**
      * POST /organizations/{organizationId}/staff Method

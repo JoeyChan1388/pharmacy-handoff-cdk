@@ -31,3 +31,62 @@ export interface CognitoUserAttribute {
   Name?: string;
   Value?: string;
 }
+
+/**
+ * StaffOrganizationLocation
+ *
+ * This interface represents a location associated with a staff member within
+ * an organization. It includes the location ID, name, city, province, and
+ * status.
+ */
+export interface StaffOrganizationLocation {
+  locationId: string;
+  name?: string;
+  city?: string;
+  province?: string;
+  status?: string;
+}
+
+/**
+ * StaffOrganizationSummary
+ *
+ * This interface represents a summary of an organization that a staff member
+ * is associated with. It includes the organization ID, name, role, and an
+ * array of locations.
+ */
+export interface StaffOrganizationSummary {
+  organizationId: string;
+  name?: string;
+  role: "ADMIN" | "STAFF";
+  locations: StaffOrganizationLocation[];
+}
+
+/**
+ * OrganizationMembership
+ *
+ * This interface represents a membership of a user in an organization. It
+ * includes the organization ID, user ID, role, and status.
+ */
+export interface OrganizationMembership {
+  organizationId: string;
+  userId: string;
+  role: "ADMIN" | "STAFF";
+  status?: string;
+}
+
+/**
+ * StaffLocationAssignment
+ *
+ * This interface represents an assignment of a staff member to a specific
+ * location within an organization. It includes the organization ID, location
+ * ID, and status.
+ */
+export interface StaffLocationAssignment {
+  organizationId: string;
+  locationId: string;
+  status?: string;
+}
+
+export interface OrganizationLocation extends StaffOrganizationLocation {
+  organizationId: string;
+}

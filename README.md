@@ -48,12 +48,39 @@ a role or organization ID supplied by the client without checking these records.
 The API stack provides two Cognito-protected endpoints:
 
 * `GET /staff/me` accepts a token from the staff user pool.
+* `GET /staff/me/organizations` accepts a token from the staff user pool and
+	returns the caller's active organization memberships and available locations.
 * `GET /patient/me` accepts a token from the patient user pool.
 
 Both return the caller's profile, selected by the authenticated token's `sub`
 claim. They do not accept a user ID from the request. A missing profile returns
-`404`; API Gateway rejects missing or invalid Cognito tokens. The API allows
-browser requests from any origin; authorization is still enforced by Cognito.
+`404`; API Gateway rejects missing or invalid Cognito tokens. Browser CORS is
+restricted to the origins configured in `api-stack.ts`.
+
+The organizations endpoint gets the user's identity from the verified Cognito
+`sub`. It returns only active memberships. Organization admins receive all
+locations in each organization; regular staff receive only locations with an
+active assignment. Example response:
+
+```json
+{
+	"organizations": [
+		{
+			"organizationId": "shoppers-drug-mart",
+			"name": "Shoppers Drug Mart",
+			"role": "ADMIN",
+			"locations": [
+				{
+					"locationId": "oshawa",
+					"name": "Shoppers Drug Mart - Oshawa",
+					"city": "Oshawa",
+					"province": "ON"
+				}
+			]
+		}
+	]
+}
+```
 
 After deploying, retrieve the API base URL from the `ApiUrl` output on the
 `PharmacyHandoffApi` stack, then append the endpoint path and send the Cognito
