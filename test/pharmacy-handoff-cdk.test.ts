@@ -244,6 +244,7 @@ describe("ApiStack", () => {
     locationsTable: dataStack.locationsTable,
     staffLocationAssignmentsTable: dataStack.staffLocationAssignmentsTable,
     organizationMembershipsTable: dataStack.organizationMembershipsTable,
+    platformAdminUserIds: ["platform-admin-sub"],
     staffUserPool: authStack.staffUserPool,
     patientUserPool: authStack.patientUserPool,
   });
@@ -257,7 +258,7 @@ describe("ApiStack", () => {
     });
   });
 
-  test("exposes two authenticated GET endpoints", () => {
+  test("exposes three authenticated GET endpoints", () => {
     const methods = Object.values(
       template.findResources("AWS::ApiGateway::Method"),
     ).filter(
@@ -280,7 +281,7 @@ describe("ApiStack", () => {
   });
 
   test("uses one profile Lambda with read-only access to the users table", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 3);
+    template.resourceCountIs("AWS::Lambda::Function", 4);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Runtime: "nodejs24.x",
       Handler: "index.handler",
@@ -351,13 +352,51 @@ describe("ApiStack", () => {
         (method.Properties as { HttpMethod?: string }).HttpMethod === "POST",
     );
 
-    expect(postMethods).toHaveLength(1);
-    expect(postMethods[0].Properties).toMatchObject({
-      AuthorizationType: "COGNITO_USER_POOLS",
+    expect(postMethods).toHaveLength(2);
+    for (const method of postMethods) {
+      expect(method.Properties).toMatchObject({
+        AuthorizationType: "COGNITO_USER_POOLS",
+      });
+      expect(
+        (method.Properties as { AuthorizerId?: unknown }).AuthorizerId,
+      ).toBeDefined();
+    }
+  });
+
+  test("creates an allowlisted platform-admin organization endpoint", () => {
+    template.resourceCountIs("AWS::Lambda::Function", 4);
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.objectLike({
+          PLATFORM_ADMIN_USER_IDS: "platform-admin-sub",
+          STAFF_USER_POOL_ID: Match.anyValue(),
+        }),
+      },
     });
-    expect(
-      (postMethods[0].Properties as { AuthorizerId?: unknown }).AuthorizerId,
-    ).toBeDefined();
+
+    template.hasResourceProperties("AWS::IAM::Policy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith([
+              "cognito-idp:AdminCreateUser",
+              "cognito-idp:AdminDeleteUser",
+            ]),
+            Effect: "Allow",
+            Resource: Match.anyValue(),
+          }),
+          Match.objectLike({
+            Action: Match.arrayWith([
+              "dynamodb:TransactWriteItems",
+              "dynamodb:PutItem",
+              "dynamodb:UpdateItem",
+            ]),
+            Effect: "Allow",
+            Resource: Match.anyValue(),
+          }),
+        ]),
+      },
+    });
   });
 
   test("gives the invite Lambda scoped Cognito and table permissions", () => {

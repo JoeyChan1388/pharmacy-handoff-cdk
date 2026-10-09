@@ -17,6 +17,7 @@ interface ApiStackProps extends cdk.StackProps {
   organizationsTable: dynamodb.ITable;
   organizationMembershipsTable: dynamodb.ITable;
   staffLocationAssignmentsTable: dynamodb.ITable;
+  platformAdminUserIds: string[];
 }
 
 /**
@@ -29,6 +30,12 @@ interface ApiStackProps extends cdk.StackProps {
 export class ApiStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
+
+    if (props.platformAdminUserIds.length === 0) {
+      throw new Error(
+        "ApiStack requires at least one platform admin Cognito sub",
+      );
+    }
 
     /**
      * Allowed Origins
@@ -148,39 +155,6 @@ export class ApiStack extends cdk.Stack {
     );
 
     /**
-     * GetStaffOrganizations Lambda Function
-     *
-     * This Lambda function is responsible for retrieving the organizations
-     * and locations that a staff member is associated with.
-     */
-    const getStaffOrganizations = new NodejsFunction(
-      this,
-      "GetStaffOrganizationsResolver",
-      {
-        runtime: lambda.Runtime.NODEJS_24_X,
-        entry: join(__dirname, "../lambda/getStaffOrganizationsResolver.ts"),
-        handler: "handler",
-        environment: {
-          ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
-          LOCATIONS_TABLE_NAME: props.locationsTable.tableName,
-          ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
-            props.organizationMembershipsTable.tableName,
-          STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME:
-            props.staffLocationAssignmentsTable.tableName,
-          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
-        },
-      },
-    );
-
-    /**
-     * Grant Table Read Permissions to GetStaffOrganizations Lambda Function
-     */
-    props.organizationsTable.grantReadData(getStaffOrganizations);
-    props.locationsTable.grantReadData(getStaffOrganizations);
-    props.organizationMembershipsTable.grantReadData(getStaffOrganizations);
-    props.staffLocationAssignmentsTable.grantReadData(getStaffOrganizations);
-
-    /**
      * IAM Policies for InviteOrganizationStaff Lambda Function
      */
     inviteStaff.addToRolePolicy(
@@ -219,6 +193,90 @@ export class ApiStack extends cdk.Stack {
     );
 
     /**
+     * GetStaffOrganizations Lambda Function
+     *
+     * This Lambda function is responsible for retrieving the organizations
+     * and locations that a staff member is associated with.
+     */
+    const getStaffOrganizations = new NodejsFunction(
+      this,
+      "GetStaffOrganizationsResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(__dirname, "../lambda/getStaffOrganizationsResolver.ts"),
+        handler: "handler",
+        environment: {
+          ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
+          LOCATIONS_TABLE_NAME: props.locationsTable.tableName,
+          ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
+            props.organizationMembershipsTable.tableName,
+          STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME:
+            props.staffLocationAssignmentsTable.tableName,
+          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
+        },
+      },
+    );
+
+    /**
+     * Grant Table Read Permissions to GetStaffOrganizations Lambda Function
+     */
+    props.organizationsTable.grantReadData(getStaffOrganizations);
+    props.locationsTable.grantReadData(getStaffOrganizations);
+    props.organizationMembershipsTable.grantReadData(getStaffOrganizations);
+    props.staffLocationAssignmentsTable.grantReadData(getStaffOrganizations);
+
+    /**
+     * CreateOrganization Lambda Function
+     *
+     * This Lambda function is responsible for creating a new organization.
+     * It requires the user to be a platform admin, and it creates a new
+     * organization in the DynamoDB organizations table, as well as a new
+     * user profile for the organization admin in the users table.
+     */
+    const createOrganization = new NodejsFunction(
+      this,
+      "CreateOrganizationResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(__dirname, "../lambda/createOrganizationResolver.ts"),
+        handler: "handler",
+        environment: {
+          STAFF_USER_POOL_ID: props.staffUserPool.userPoolId,
+          PLATFORM_ADMIN_USER_IDS: props.platformAdminUserIds.join(","),
+          USERS_TABLE_NAME: props.usersTable.tableName,
+          ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
+          ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
+            props.organizationMembershipsTable.tableName,
+          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
+        },
+      },
+    );
+
+    /**
+     * IAM Policies for CreateOrganization Lambda Function
+     */
+    createOrganization.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cognito-idp:AdminCreateUser", "cognito-idp:AdminDeleteUser"],
+        resources: [props.staffUserPool.userPoolArn],
+      }),
+    );
+    createOrganization.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "dynamodb:TransactWriteItems",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+        ],
+        resources: [
+          props.usersTable.tableArn,
+          props.organizationsTable.tableArn,
+          props.organizationMembershipsTable.tableArn,
+        ],
+      }),
+    );
+
+    /**
      * /staff/me Resource
      */
     const staffMe = api.root.addResource("staff").addResource("me");
@@ -242,6 +300,13 @@ export class ApiStack extends cdk.Stack {
       .addResource("staff");
 
     /**
+     * /platform/organizations Resource
+     */
+    const platformOrganizations = api.root
+      .addResource("platform")
+      .addResource("organizations");
+
+    /**
      * GET /staff/me and GET /patient/me Methods
      *
      * These methods are protected by Cognito authorizers and will return the
@@ -255,9 +320,33 @@ export class ApiStack extends cdk.Stack {
       authorizationType: apigateway.AuthorizationType.COGNITO,
       authorizer: patientAuthorizer,
     });
+
+    /**
+     * GET /staff/me/organizations Method
+     *
+     * This method is protected by the staff Cognito authorizer and will return
+     * the organizations and locations that the authenticated staff member is
+     * associated with.
+     */
     staffOrganizations.addMethod(
       "GET",
       new apigateway.LambdaIntegration(getStaffOrganizations),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+
+    /**
+     * POST /platform/organizations Method
+     *
+     * This method is protected by the staff Cognito authorizer and will allow
+     * platform admins to create new organizations. The Lambda function will
+     * handle the creation of the organization and the initial admin user.
+     */
+    platformOrganizations.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(createOrganization),
       {
         authorizationType: apigateway.AuthorizationType.COGNITO,
         authorizer: staffAuthorizer,

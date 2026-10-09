@@ -35,6 +35,35 @@ location, and staff user exist, that the location belongs to the organization,
 and that the caller's membership role permits the requested action. Never trust
 a role or organization ID supplied by the client without checking these records.
 
+## Platform Organization Provisioning
+
+`POST /platform/organizations` provisions a new blank organization and invites
+its first organization admin. It is not public self-signup: API Gateway first
+requires a valid staff-pool Cognito token, then the Lambda requires the token's
+`sub` to be in the platform-admin allowlist. The allowlist is configured in
+`bin/pharmacy-handoff-cdk.ts` from the `platformAdminUserIds` CDK context value,
+the `PLATFORM_ADMIN_USER_IDS` environment variable, or the current seeded admin
+as the personal-project default. Supply comma-separated Cognito `sub` values
+to override it, for example:
+
+```sh
+PLATFORM_ADMIN_USER_IDS="cognito-sub-1,cognito-sub-2" cdk deploy PharmacyHandoffApi --profile personal
+```
+
+The request body contains the organization name and the initial admin's email:
+
+```json
+{
+	"organizationName": "New Pharmacy Group",
+	"adminEmail": "admin@example.com"
+}
+```
+
+The endpoint generates an organization ID, creates no locations, sends the
+admin a Cognito invitation, and creates an `ADMIN` membership with status
+`INVITED` until the invitee sets a permanent password. DynamoDB writes for the
+organization, profile, and membership are transactional.
+
 ## Useful commands
 
 * `npm run build` compiles TypeScript

@@ -23,6 +23,18 @@ export interface InviteOrganizationStaffRequest {
 }
 
 /**
+ * CreateOrganizationRequest
+ *
+ * This interface represents the expected structure of the request body for
+ * creating a new organization. It includes the name of the organization and
+ * the email of the initial admin user.
+ */
+export interface CreateOrganizationRequest {
+  organizationName?: unknown;
+  adminEmail?: unknown;
+}
+
+/**
  * CognitoUserAttribute
  *
  * This interface represents a user attribute in Cognito.
