@@ -167,7 +167,7 @@ export class ApiStack extends cdk.Stack {
     );
     inviteStaff.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ["dynamodb:PutItem"],
+        actions: ["dynamodb:UpdateItem"],
         resources: [props.staffLocationAssignmentsTable.tableArn],
       }),
     );

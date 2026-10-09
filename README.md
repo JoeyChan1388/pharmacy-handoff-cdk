@@ -59,6 +59,23 @@ After deploying, retrieve the API base URL from the `ApiUrl` output on the
 `PharmacyHandoffApi` stack, then append the endpoint path and send the Cognito
 JWT in an `Authorization: Bearer <token>` header.
 
+## Postman Cognito Login
+
+The staff user pool has a Cognito Hosted UI domain configured for Postman's
+OAuth 2.0 Authorization Code flow with PKCE. In Postman, use:
+
+* Grant Type: Authorization Code (With PKCE)
+* Callback URL: `https://oauth.pstmn.io/v1/callback`
+* Auth URL: `https://pharmacy-handoff-543908652237.auth.ca-central-1.amazoncognito.com/oauth2/authorize`
+* Access Token URL: `https://pharmacy-handoff-543908652237.auth.ca-central-1.amazoncognito.com/oauth2/token`
+* Client ID: `4f5n93ojg0sn2v29lg6u9b5jbe`
+* Client Authentication: Send client credentials in body / no client secret
+* Scopes: `openid email profile`
+
+After Postman signs in, use the **ID token** from the Cognito token response as
+the Bearer token for API Gateway requests. Cognito returns both an access token
+and an ID token; the current API Gateway authorizers expect the ID token.
+
 Organization admins can invite staff with:
 
 ```http

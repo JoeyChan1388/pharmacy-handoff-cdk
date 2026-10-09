@@ -58,10 +58,28 @@ export class AuthStack extends cdk.Stack {
     new cognito.UserPoolClient(this, "StaffUserPoolClient", {
       userPool: this.staffUserPool,
       generateSecret: false,
+      oAuth: {
+        flows: {
+          authorizationCodeGrant: true,
+        },
+        scopes: [
+          cognito.OAuthScope.OPENID,
+          cognito.OAuthScope.EMAIL,
+          cognito.OAuthScope.PROFILE,
+        ],
+        callbackUrls: ["https://oauth.pstmn.io/v1/callback"],
+        logoutUrls: ["https://oauth.pstmn.io/v1/callback"],
+      },
     });
     new cognito.UserPoolClient(this, "PatientUserPoolClient", {
       userPool: this.patientUserPool,
       generateSecret: false,
+    });
+
+    this.staffUserPool.addDomain("StaffHostedUiDomain", {
+      cognitoDomain: {
+        domainPrefix: "pharmacy-handoff-543908652237",
+      },
     });
 
     /**

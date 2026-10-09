@@ -45,6 +45,22 @@ describe("AuthStack", () => {
     });
   });
 
+  test("configures staff Hosted UI for Postman authorization-code PKCE", () => {
+    template.hasResourceProperties("AWS::Cognito::UserPoolDomain", {
+      Domain: "pharmacy-handoff-543908652237",
+      UserPoolId: Match.anyValue(),
+    });
+
+    template.hasResourceProperties("AWS::Cognito::UserPoolClient", {
+      GenerateSecret: false,
+      AllowedOAuthFlowsUserPoolClient: true,
+      AllowedOAuthFlows: ["code"],
+      AllowedOAuthScopes: ["openid", "email", "profile"],
+      CallbackURLs: ["https://oauth.pstmn.io/v1/callback"],
+      LogoutURLs: ["https://oauth.pstmn.io/v1/callback"],
+    });
+  });
+
   test("creates authenticated-only identity pools", () => {
     template.resourceCountIs("AWS::Cognito::IdentityPool", 2);
 
@@ -326,6 +342,22 @@ describe("ApiStack", () => {
             ]),
             Effect: "Allow",
             Resource: Match.anyValue(),
+          }),
+        ]),
+      },
+    });
+
+    template.hasResourceProperties("AWS::IAM::Policy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: "dynamodb:UpdateItem",
+            Effect: "Allow",
+            Resource: Match.objectLike({
+              "Fn::ImportValue": Match.stringLikeRegexp(
+                "StaffLocationAssignmentsTable",
+              ),
+            }),
           }),
         ]),
       },
