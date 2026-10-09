@@ -277,6 +277,54 @@ export class ApiStack extends cdk.Stack {
     );
 
     /**
+     * CreateOrganizationLocation Lambda Function
+     *
+     * This Lambda function is responsible for creating a new location for an
+     * organization. It requires the user to be a platform admin or an admin of
+     * the organization, and it creates a new location in the locations table.
+     */
+    const createOrganizationLocation = new NodejsFunction(
+      this,
+      "CreateOrganizationLocationResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(
+          __dirname,
+          "../lambda/createOrganizationLocationResolver.ts",
+        ),
+        handler: "handler",
+        description:
+          "Lambda function to create a new location for an organization",
+        environment: {
+          ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
+          ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
+            props.organizationMembershipsTable.tableName,
+          LOCATIONS_TABLE_NAME: props.locationsTable.tableName,
+          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
+        },
+      },
+    );
+
+    /**
+     * IAM Policies for CreateOrganizationLocation Lambda Function
+     */
+    createOrganizationLocation.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["dynamodb:GetItem"],
+        resources: [
+          props.organizationsTable.tableArn,
+          props.organizationMembershipsTable.tableArn,
+        ],
+      }),
+    );
+    createOrganizationLocation.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["dynamodb:PutItem"],
+        resources: [props.locationsTable.tableArn],
+      }),
+    );
+
+    /**
      * /staff/me Resource
      */
     const staffMe = api.root.addResource("staff").addResource("me");
@@ -292,12 +340,18 @@ export class ApiStack extends cdk.Stack {
     const staffOrganizations = staffMe.addResource("organizations");
 
     /**
-     * /organizations/{organizationId}/staff Resource
+     * /organizations/{organizationId} Resource
      */
-    const organizationStaff = api.root
+    const organizationResource = api.root
       .addResource("organizations")
-      .addResource("{organizationId}")
-      .addResource("staff");
+      .addResource("{organizationId}");
+
+    /**
+     * /organizations/{organizationId}/staff and 
+     * /organizations/{organizationId}/locations Resources
+     */
+    const organizationStaff = organizationResource.addResource("staff");
+    const organizationLocations = organizationResource.addResource("locations");
 
     /**
      * /platform/organizations Resource
@@ -347,6 +401,22 @@ export class ApiStack extends cdk.Stack {
     platformOrganizations.addMethod(
       "POST",
       new apigateway.LambdaIntegration(createOrganization),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+
+    /**
+     * POST /organizations/{organizationId}/locations Method
+     *
+     * This method is protected by the staff Cognito authorizer and will allow
+     * staff members to create new locations within an organization. The Lambda
+     * function will handle the creation of the location.
+     */
+    organizationLocations.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(createOrganizationLocation),
       {
         authorizationType: apigateway.AuthorizationType.COGNITO,
         authorizer: staffAuthorizer,

@@ -35,6 +35,23 @@ export interface CreateOrganizationRequest {
 }
 
 /**
+ * CreateOrganizationLocationRequest
+ *
+ * This interface represents the expected structure of the request body for
+ * creating a new location within an organization. It includes the name,
+ * address, city, province, postal code, and phone number of the location.
+ */
+export interface CreateOrganizationLocationRequest {
+  name?: unknown;
+  addressLine1?: unknown;
+  addressLine2?: unknown;
+  city?: unknown;
+  province?: unknown;
+  postalCode?: unknown;
+  phone?: unknown;
+}
+
+/**
  * CognitoUserAttribute
  *
  * This interface represents a user attribute in Cognito.

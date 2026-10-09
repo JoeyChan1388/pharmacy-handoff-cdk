@@ -281,7 +281,7 @@ describe("ApiStack", () => {
   });
 
   test("uses one profile Lambda with read-only access to the users table", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 4);
+    template.resourceCountIs("AWS::Lambda::Function", 5);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Runtime: "nodejs24.x",
       Handler: "index.handler",
@@ -297,7 +297,7 @@ describe("ApiStack", () => {
       PolicyDocument: {
         Statement: Match.arrayWith([
           Match.objectLike({
-            Action: Match.arrayWith(["dynamodb:GetItem"]),
+            Action: "dynamodb:GetItem",
             Effect: "Allow",
           }),
         ]),
@@ -352,7 +352,7 @@ describe("ApiStack", () => {
         (method.Properties as { HttpMethod?: string }).HttpMethod === "POST",
     );
 
-    expect(postMethods).toHaveLength(2);
+    expect(postMethods).toHaveLength(3);
     for (const method of postMethods) {
       expect(method.Properties).toMatchObject({
         AuthorizationType: "COGNITO_USER_POOLS",
@@ -364,7 +364,7 @@ describe("ApiStack", () => {
   });
 
   test("creates an allowlisted platform-admin organization endpoint", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 4);
+    template.resourceCountIs("AWS::Lambda::Function", 5);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({
@@ -393,6 +393,36 @@ describe("ApiStack", () => {
             ]),
             Effect: "Allow",
             Resource: Match.anyValue(),
+          }),
+        ]),
+      },
+    });
+  });
+
+  test("creates an organization location endpoint with scoped table access", () => {
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.objectLike({
+          ORGANIZATION_MEMBERSHIPS_TABLE_NAME: Match.anyValue(),
+          ORGANIZATIONS_TABLE_NAME: Match.anyValue(),
+          LOCATIONS_TABLE_NAME: Match.anyValue(),
+        }),
+      },
+    });
+
+    template.hasResourceProperties("AWS::IAM::Policy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: "dynamodb:GetItem",
+            Effect: "Allow",
+          }),
+          Match.objectLike({
+            Action: "dynamodb:PutItem",
+            Effect: "Allow",
+            Resource: Match.objectLike({
+              "Fn::ImportValue": Match.stringLikeRegexp("LocationsTable"),
+            }),
           }),
         ]),
       },
