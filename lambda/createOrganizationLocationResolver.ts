@@ -53,7 +53,7 @@ function response(
  * undefined, null, or an empty string, it returns undefined. If the value is a
  * string that exceeds the specified maxLength, it throws an error. Otherwise,
  * it returns the trimmed string.
- * 
+ *
  * @param value The value to validate
  * @param field The name of the field (used in error messages)
  * @param maxLength The maximum allowed length for the string
@@ -79,10 +79,10 @@ function optionalText(
  * This Lambda function is responsible for creating a new location for an
  * organization. It requires the user to be a platform admin or an admin of
  * the organization, and it creates a new location in the locations table.
- * 
- * @param event The API Gateway event containing the request details 
+ *
+ * @param event The API Gateway event containing the request details
  * and authorizer claims.
- * @returns An APIGatewayProxyResult containing the created location details 
+ * @returns An APIGatewayProxyResult containing the created location details
  * or an error message.
  */
 export const handler = async (
@@ -131,6 +131,9 @@ export const handler = async (
   );
   if (!organizationResult.Item) {
     return response(event, 404, { message: "Organization not found" });
+  }
+  if (organizationResult.Item.status === "INACTIVE") {
+    return response(event, 409, { message: "Organization is inactive" });
   }
 
   let body: CreateOrganizationLocationRequest;

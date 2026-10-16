@@ -144,13 +144,14 @@ export const handler = async (
 
   const organizations = await Promise.all(
     activeMemberships.map(
-      async (membership): Promise<StaffOrganizationSummary> => {
+      async (membership): Promise<StaffOrganizationSummary | undefined> => {
         const organizationResult = await dynamodb.send(
           new GetCommand({
             TableName: tableNames.organizations,
             Key: { organizationId: membership.organizationId },
           }),
         );
+        if (organizationResult.Item?.status === "INACTIVE") return undefined;
 
         const locations: OrganizationLocation[] =
           membership.role === "ADMIN"
@@ -201,5 +202,10 @@ export const handler = async (
     ),
   );
 
-  return response(event, 200, { organizations });
+  return response(event, 200, {
+    organizations: organizations.filter(
+      (organization): organization is StaffOrganizationSummary =>
+        Boolean(organization),
+    ),
+  });
 };

@@ -59,7 +59,7 @@ export class ApiStack extends cdk.Stack {
       restApiName: `${id}-Api`,
       defaultCorsPreflightOptions: {
         allowOrigins: AllowedWebOrigins,
-        allowMethods: ["GET", "POST", "OPTIONS"],
+        allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allowHeaders: ["Authorization", "Content-Type"],
       },
     });
@@ -253,6 +253,111 @@ export class ApiStack extends cdk.Stack {
     );
 
     /**
+     * ListPlatformUsers Lambda Function
+     *
+     * This Lambda function is responsible for listing all platform users.
+     * It requires the user to be a platform admin, and it retrieves all
+     * users from the DynamoDB users table.
+     */
+    const listPlatformUsers = new NodejsFunction(
+      this,
+      "ListPlatformUsersResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(__dirname, "../lambda/listPlatformUsersResolver.ts"),
+        handler: "handler",
+        environment: {
+          USERS_TABLE_NAME: props.usersTable.tableName,
+          PLATFORM_ADMIN_USER_IDS: props.platformAdminUserIds.join(","),
+          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
+        },
+      },
+    );
+
+    /**
+     * Grant Table Read Permissions to ListPlatformUsers Lambda Function
+     */
+    props.usersTable.grantReadData(listPlatformUsers);
+
+    /**
+     * ListPlatformOrganizations Lambda Function
+     *
+     * This method is protected by the staff Cognito authorizer and will return
+     * a list of all platform organizations.
+     */
+    const listPlatformOrganizations = new NodejsFunction(
+      this,
+      "ListPlatformOrganizationsResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(
+          __dirname,
+          "../lambda/listPlatformOrganizationsResolver.ts",
+        ),
+        handler: "handler",
+        environment: {
+          ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
+          PLATFORM_ADMIN_USER_IDS: props.platformAdminUserIds.join(","),
+          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
+        },
+      },
+    );
+    props.organizationsTable.grantReadData(listPlatformOrganizations);
+
+    const managePlatformUser = new NodejsFunction(
+      this,
+      "ManagePlatformUserResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(__dirname, "../lambda/managePlatformUserResolver.ts"),
+        handler: "handler",
+        environment: {
+          USERS_TABLE_NAME: props.usersTable.tableName,
+          STAFF_USER_POOL_ID: props.staffUserPool.userPoolId,
+          PATIENT_USER_POOL_ID: props.patientUserPool.userPoolId,
+          PLATFORM_ADMIN_USER_IDS: props.platformAdminUserIds.join(","),
+          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
+        },
+      },
+    );
+    props.usersTable.grantReadWriteData(managePlatformUser);
+    managePlatformUser.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "cognito-idp:AdminCreateUser",
+          "cognito-idp:AdminDeleteUser",
+          "cognito-idp:AdminDisableUser",
+          "cognito-idp:AdminEnableUser",
+          "cognito-idp:AdminUpdateUserAttributes",
+          "cognito-idp:ListUsers",
+        ],
+        resources: [
+          props.staffUserPool.userPoolArn,
+          props.patientUserPool.userPoolArn,
+        ],
+      }),
+    );
+
+    const managePlatformOrganization = new NodejsFunction(
+      this,
+      "ManagePlatformOrganizationResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(
+          __dirname,
+          "../lambda/managePlatformOrganizationResolver.ts",
+        ),
+        handler: "handler",
+        environment: {
+          ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
+          PLATFORM_ADMIN_USER_IDS: props.platformAdminUserIds.join(","),
+          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
+        },
+      },
+    );
+    props.organizationsTable.grantReadWriteData(managePlatformOrganization);
+
+    /**
      * IAM Policies for CreateOrganization Lambda Function
      */
     createOrganization.addToRolePolicy(
@@ -347,18 +452,23 @@ export class ApiStack extends cdk.Stack {
       .addResource("{organizationId}");
 
     /**
-     * /organizations/{organizationId}/staff and 
+     * /organizations/{organizationId}/staff and
      * /organizations/{organizationId}/locations Resources
      */
     const organizationStaff = organizationResource.addResource("staff");
     const organizationLocations = organizationResource.addResource("locations");
 
     /**
-     * /platform/organizations Resource
+     * /platform/organizations Resource and
+     * /platform/users Resource
      */
-    const platformOrganizations = api.root
-      .addResource("platform")
-      .addResource("organizations");
+    const platform = api.root.addResource("platform");
+    const platformUsers = platform.addResource("users");
+    const platformOrganizations = platform.addResource("organizations");
+    const platformUser = platformUsers.addResource("{userId}");
+    const platformOrganization = platformOrganizations.addResource(
+      "{organizationId}",
+    );
 
     /**
      * GET /staff/me and GET /patient/me Methods
@@ -401,6 +511,92 @@ export class ApiStack extends cdk.Stack {
     platformOrganizations.addMethod(
       "POST",
       new apigateway.LambdaIntegration(createOrganization),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+
+    /**
+     * GET /platform/organizations Method
+     *
+     * This method is protected by the staff Cognito authorizer and will return
+     * a list of all platform organizations.
+     */
+    platformOrganizations.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(listPlatformOrganizations),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+
+    /**
+     * GET /platform/users Method
+     *
+     * This method is protected by the staff Cognito authorizer and will return
+     * a list of all platform users.
+     */
+    platformUsers.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(listPlatformUsers),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+    platformUsers.addMethod(
+      "POST",
+      new apigateway.LambdaIntegration(managePlatformUser),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+    platformUser.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(managePlatformUser),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+    platformUser.addMethod(
+      "PATCH",
+      new apigateway.LambdaIntegration(managePlatformUser),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+    platformUser.addMethod(
+      "DELETE",
+      new apigateway.LambdaIntegration(managePlatformUser),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+    platformOrganization.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(managePlatformOrganization),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+    platformOrganization.addMethod(
+      "PATCH",
+      new apigateway.LambdaIntegration(managePlatformOrganization),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+    platformOrganization.addMethod(
+      "DELETE",
+      new apigateway.LambdaIntegration(managePlatformOrganization),
       {
         authorizationType: apigateway.AuthorizationType.COGNITO,
         authorizer: staffAuthorizer,

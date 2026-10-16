@@ -64,6 +64,29 @@ admin a Cognito invitation, and creates an `ADMIN` membership with status
 `INVITED` until the invitee sets a permanent password. DynamoDB writes for the
 organization, profile, and membership are transactional.
 
+Platform admins can use `GET /platform/users` and
+`GET /platform/organizations` to retrieve all user profiles or organizations.
+Both endpoints require a staff-pool Cognito ID token and verify that its `sub`
+is in the platform-admin allowlist. Responses contain a `users` or
+`organizations` array, respectively; each endpoint scans all DynamoDB pages.
+
+The remaining platform CRUD routes are:
+
+* `POST /platform/users` creates a Cognito account and profile. The JSON body
+	requires `email` and `userPoolType` (`STAFF` or `PATIENT`); `givenName` and
+	`familyName` are optional.
+* `GET /platform/users/{userId}` retrieves one profile. `PATCH` accepts any of
+	`email`, `givenName`, `familyName`, or `status` (`ACTIVE` or `DISABLED`).
+	`DELETE` disables the Cognito account and marks its profile `DISABLED`.
+* `GET /platform/organizations/{organizationId}` retrieves one organization.
+	`PATCH` accepts `name` and/or `status` (`ACTIVE` or `INACTIVE`). `DELETE`
+	marks the organization `INACTIVE`; it can be reactivated with `PATCH`.
+
+All of these routes require the staff-pool ID token and platform-admin
+allowlist check. Deactivated organizations remain visible in platform lists,
+but are omitted from staff organization results and reject new invitations or
+locations. Organization memberships, locations, and assignments are retained.
+
 ## Useful commands
 
 * `npm run build` compiles TypeScript
@@ -74,7 +97,7 @@ organization, profile, and membership are transactional.
 
 ## Profile API
 
-The API stack provides two Cognito-protected endpoints:
+The API stack provides these Cognito-protected profile endpoints:
 
 * `GET /staff/me` accepts a token from the staff user pool.
 * `GET /staff/me/organizations` accepts a token from the staff user pool and

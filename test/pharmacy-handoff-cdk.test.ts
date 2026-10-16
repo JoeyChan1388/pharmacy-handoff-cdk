@@ -86,9 +86,9 @@ describe("AuthStack", () => {
   test("passes the users table name and grants the Lambda write access", () => {
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
-        Variables: {
+        Variables: Match.objectLike({
           USERS_TABLE_NAME: Match.anyValue(),
-        },
+        }),
       },
     });
 
@@ -258,7 +258,7 @@ describe("ApiStack", () => {
     });
   });
 
-  test("exposes three authenticated GET endpoints", () => {
+  test("exposes five authenticated GET endpoints", () => {
     const methods = Object.values(
       template.findResources("AWS::ApiGateway::Method"),
     ).filter(
@@ -266,7 +266,7 @@ describe("ApiStack", () => {
         (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
     );
 
-    expect(methods).toHaveLength(3);
+    expect(methods).toHaveLength(7);
     const authorizerIds = new Set<string>();
     for (const method of methods) {
       const properties = method.Properties as {
@@ -281,7 +281,7 @@ describe("ApiStack", () => {
   });
 
   test("uses one profile Lambda with read-only access to the users table", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 5);
+    template.resourceCountIs("AWS::Lambda::Function", 9);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Runtime: "nodejs24.x",
       Handler: "index.handler",
@@ -312,7 +312,7 @@ describe("ApiStack", () => {
       (method) =>
         (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
     );
-    expect(getMethods).toHaveLength(3);
+    expect(getMethods).toHaveLength(7);
     expect(
       getMethods.every(
         (method) =>
@@ -352,7 +352,7 @@ describe("ApiStack", () => {
         (method.Properties as { HttpMethod?: string }).HttpMethod === "POST",
     );
 
-    expect(postMethods).toHaveLength(3);
+    expect(postMethods).toHaveLength(4);
     for (const method of postMethods) {
       expect(method.Properties).toMatchObject({
         AuthorizationType: "COGNITO_USER_POOLS",
@@ -364,7 +364,7 @@ describe("ApiStack", () => {
   });
 
   test("creates an allowlisted platform-admin organization endpoint", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 5);
+    template.resourceCountIs("AWS::Lambda::Function", 9);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({
@@ -393,6 +393,77 @@ describe("ApiStack", () => {
             ]),
             Effect: "Allow",
             Resource: Match.anyValue(),
+          }),
+        ]),
+      },
+    });
+  });
+
+  test("creates platform-admin list resolvers with table scan access", () => {
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.objectLike({
+          USERS_TABLE_NAME: Match.anyValue(),
+          PLATFORM_ADMIN_USER_IDS: "platform-admin-sub",
+        }),
+      },
+    });
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.objectLike({
+          ORGANIZATIONS_TABLE_NAME: Match.anyValue(),
+          PLATFORM_ADMIN_USER_IDS: "platform-admin-sub",
+        }),
+      },
+    });
+    template.hasResourceProperties("AWS::IAM::Policy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith(["dynamodb:Scan"]),
+            Effect: "Allow",
+          }),
+        ]),
+      },
+    });
+  });
+
+  test("protects all platform CRUD methods and grants Cognito pool access", () => {
+    const methods = Object.values(
+      template.findResources("AWS::ApiGateway::Method"),
+    );
+    const platformCrudMethods = methods.filter((method) => {
+      const properties = method.Properties as {
+        HttpMethod?: string;
+        AuthorizationType?: string;
+      };
+      return ["GET", "POST", "PATCH", "DELETE"].includes(
+        properties.HttpMethod ?? "",
+      ) && properties.AuthorizationType === "COGNITO_USER_POOLS";
+    });
+    expect(platformCrudMethods.length).toBeGreaterThanOrEqual(13);
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.objectLike({
+          STAFF_USER_POOL_ID: Match.anyValue(),
+          PATIENT_USER_POOL_ID: Match.anyValue(),
+          PLATFORM_ADMIN_USER_IDS: "platform-admin-sub",
+        }),
+      },
+    });
+    template.hasResourceProperties("AWS::IAM::Policy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith([
+              "cognito-idp:AdminCreateUser",
+              "cognito-idp:AdminDisableUser",
+              "cognito-idp:AdminEnableUser",
+              "cognito-idp:AdminUpdateUserAttributes",
+              "cognito-idp:ListUsers",
+            ]),
+            Effect: "Allow",
           }),
         ]),
       },

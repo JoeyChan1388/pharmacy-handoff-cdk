@@ -165,6 +165,7 @@ export const handler = async (
               Item: {
                 organizationId,
                 name: organizationName,
+                status: "ACTIVE",
                 createdAt: now,
                 updatedAt: now,
               },
@@ -176,14 +177,18 @@ export const handler = async (
               TableName: usersTableName,
               Key: { userId: createdAdminUserId },
               UpdateExpression:
-                "SET #email = :email, #createdAt = if_not_exists(#createdAt, :now), #updatedAt = :now",
+                "SET #email = :email, #userPoolType = :userPoolType, #status = :status, #createdAt = if_not_exists(#createdAt, :now), #updatedAt = :now",
               ExpressionAttributeNames: {
                 "#email": "email",
+                "#userPoolType": "userPoolType",
+                "#status": "status",
                 "#createdAt": "createdAt",
                 "#updatedAt": "updatedAt",
               },
               ExpressionAttributeValues: {
                 ":email": adminEmail,
+                ":userPoolType": "STAFF",
+                ":status": membershipStatus,
                 ":now": now,
               },
             },

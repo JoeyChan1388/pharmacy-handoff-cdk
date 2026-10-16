@@ -145,6 +145,9 @@ export const handler = async (
   if (!organizationResult.Item) {
     return reply(404, { message: "Organization not found" });
   }
+  if (organizationResult.Item.status === "INACTIVE") {
+    return reply(409, { message: "Organization is inactive" });
+  }
 
   /**
    * Request Body Validation
@@ -273,13 +276,18 @@ export const handler = async (
       TableName: tableNames.users,
       Key: { userId },
       UpdateExpression:
-        "SET #email = :email, #createdAt = if_not_exists(#createdAt, :now), #updatedAt = :now",
+        "SET #email = :email, #userPoolType = :userPoolType, #createdAt = if_not_exists(#createdAt, :now), #updatedAt = :now",
       ExpressionAttributeNames: {
         "#email": "email",
+        "#userPoolType": "userPoolType",
         "#createdAt": "createdAt",
         "#updatedAt": "updatedAt",
       },
-      ExpressionAttributeValues: { ":email": email, ":now": now },
+      ExpressionAttributeValues: {
+        ":email": email,
+        ":userPoolType": "STAFF",
+        ":now": now,
+      },
     }),
   );
 

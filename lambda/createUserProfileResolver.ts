@@ -50,14 +50,17 @@ export const handler = async (
   const expressionNames: Record<string, string> = {
     "#createdAt": "createdAt",
     "#updatedAt": "updatedAt",
+    "#status": "status",
   };
   const expressionValues: Record<string, string> = {
     ":createdAt": now,
     ":updatedAt": now,
+    ":status": "ACTIVE",
   };
   const updates = [
     "#createdAt = if_not_exists(#createdAt, :createdAt)",
     "#updatedAt = :updatedAt",
+    "#status = :status",
   ];
 
   const profileAttributes = [
