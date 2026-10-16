@@ -1,8 +1,8 @@
-import { GetCommand } from "@aws-sdk/lib-dynamodb";
-
-import { getCallerUserId } from "../shared/authorization";
 import { dynamodb } from "../shared/dynamodb";
 import { jsonResponse } from "../shared/http";
+import { GetCommand } from "@aws-sdk/lib-dynamodb";
+import { getCallerUserId } from "../shared/authorization";
+
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 /**

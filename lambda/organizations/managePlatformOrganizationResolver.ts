@@ -3,6 +3,7 @@ import { parseJsonBody } from "../shared/validation";
 import { jsonResponse as response } from "../shared/http";
 import { authorizePlatformAdmin } from "../shared/authorization";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 export const handler = async (

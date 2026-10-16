@@ -8,12 +8,12 @@ import {
   ListUsersCommand,
   type UserType,
 } from "@aws-sdk/client-cognito-identity-provider";
-import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
-import { authorizePlatformAdmin } from "../shared/authorization";
 import { dynamodb } from "../shared/dynamodb";
 import { jsonResponse as response } from "../shared/http";
+import { authorizePlatformAdmin } from "../shared/authorization";
 import { normalizeEmail, parseJsonBody } from "../shared/validation";
+import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 type UserPoolType = "STAFF" | "PATIENT";

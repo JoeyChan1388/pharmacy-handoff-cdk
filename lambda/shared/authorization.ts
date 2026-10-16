@@ -1,7 +1,7 @@
-import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
+import { jsonResponse } from "./http";
 
 import type { CognitoAuthorizerClaims } from "./types";
-import { jsonResponse } from "./http";
+import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 const platformAdminUserIds = new Set(
   (process.env.PLATFORM_ADMIN_USER_IDS ?? "").split(",").filter(Boolean),

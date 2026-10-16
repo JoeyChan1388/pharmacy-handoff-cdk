@@ -1,6 +1,7 @@
-import { authorizePlatformAdmin } from "../shared/authorization";
 import { scanAll } from "../shared/dynamodb";
 import { jsonResponse } from "../shared/http";
+import { authorizePlatformAdmin } from "../shared/authorization";
+
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 export const handler = async (
