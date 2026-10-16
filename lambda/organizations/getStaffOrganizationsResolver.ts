@@ -11,7 +11,7 @@ import type {
   OrganizationMembership,
   StaffLocationAssignment,
   StaffOrganizationSummary,
-} from "./types";
+} from "../shared/types";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));

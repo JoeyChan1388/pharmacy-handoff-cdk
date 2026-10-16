@@ -15,7 +15,7 @@ import type {
   CognitoAuthorizerClaims,
   CognitoUserAttribute,
   CreateOrganizationRequest,
-} from "./types";
+} from "../shared/types";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 const region = process.env.AWS_REGION;

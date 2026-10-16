@@ -10,7 +10,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import type {
   CognitoAuthorizerClaims,
   CreateOrganizationLocationRequest,
-} from "./types";
+} from "../shared/types";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));

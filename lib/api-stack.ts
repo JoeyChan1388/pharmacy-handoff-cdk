@@ -107,7 +107,7 @@ export class ApiStack extends cdk.Stack {
       "getUserProfileResolver",
       {
         runtime: lambda.Runtime.NODEJS_24_X,
-        entry: join(__dirname, "../lambda/getUserProfileResolver.ts"),
+        entry: join(__dirname, "../lambda/users/getUserProfileResolver.ts"),
         handler: "handler",
         environment: {
           USERS_TABLE_NAME: props.usersTable.tableName,
@@ -136,7 +136,10 @@ export class ApiStack extends cdk.Stack {
       "InviteOrganizationStaffResolver",
       {
         runtime: lambda.Runtime.NODEJS_24_X,
-        entry: join(__dirname, "../lambda/inviteOrganizationStaffResolver.ts"),
+        entry: join(
+          __dirname,
+          "../lambda/organizations/inviteOrganizationStaffResolver.ts",
+        ),
         handler: "handler",
         description:
           "Lambda function to invite staff members to an organization",
@@ -203,7 +206,10 @@ export class ApiStack extends cdk.Stack {
       "GetStaffOrganizationsResolver",
       {
         runtime: lambda.Runtime.NODEJS_24_X,
-        entry: join(__dirname, "../lambda/getStaffOrganizationsResolver.ts"),
+        entry: join(
+          __dirname,
+          "../lambda/organizations/getStaffOrganizationsResolver.ts",
+        ),
         handler: "handler",
         environment: {
           ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
@@ -238,7 +244,10 @@ export class ApiStack extends cdk.Stack {
       "CreateOrganizationResolver",
       {
         runtime: lambda.Runtime.NODEJS_24_X,
-        entry: join(__dirname, "../lambda/createOrganizationResolver.ts"),
+        entry: join(
+          __dirname,
+          "../lambda/organizations/createOrganizationResolver.ts",
+        ),
         handler: "handler",
         environment: {
           STAFF_USER_POOL_ID: props.staffUserPool.userPoolId,
@@ -264,7 +273,7 @@ export class ApiStack extends cdk.Stack {
       "ListPlatformUsersResolver",
       {
         runtime: lambda.Runtime.NODEJS_24_X,
-        entry: join(__dirname, "../lambda/listPlatformUsersResolver.ts"),
+        entry: join(__dirname, "../lambda/users/listPlatformUsersResolver.ts"),
         handler: "handler",
         environment: {
           USERS_TABLE_NAME: props.usersTable.tableName,
@@ -292,7 +301,7 @@ export class ApiStack extends cdk.Stack {
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(
           __dirname,
-          "../lambda/listPlatformOrganizationsResolver.ts",
+          "../lambda/organizations/listPlatformOrganizationsResolver.ts",
         ),
         handler: "handler",
         environment: {
@@ -309,7 +318,7 @@ export class ApiStack extends cdk.Stack {
       "ManagePlatformUserResolver",
       {
         runtime: lambda.Runtime.NODEJS_24_X,
-        entry: join(__dirname, "../lambda/managePlatformUserResolver.ts"),
+        entry: join(__dirname, "../lambda/users/managePlatformUserResolver.ts"),
         handler: "handler",
         environment: {
           USERS_TABLE_NAME: props.usersTable.tableName,
@@ -345,7 +354,7 @@ export class ApiStack extends cdk.Stack {
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(
           __dirname,
-          "../lambda/managePlatformOrganizationResolver.ts",
+          "../lambda/organizations/managePlatformOrganizationResolver.ts",
         ),
         handler: "handler",
         environment: {
@@ -395,7 +404,7 @@ export class ApiStack extends cdk.Stack {
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(
           __dirname,
-          "../lambda/createOrganizationLocationResolver.ts",
+          "../lambda/organizations/createOrganizationLocationResolver.ts",
         ),
         handler: "handler",
         description:

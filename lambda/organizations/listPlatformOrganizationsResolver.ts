@@ -1,7 +1,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, ScanCommand } from "@aws-sdk/lib-dynamodb";
 
-import type { CognitoAuthorizerClaims } from "./types";
+import type { CognitoAuthorizerClaims } from "../shared/types";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
@@ -43,10 +43,10 @@ export const handler = async (
     return response(event, 403, { message: "Platform admin access required" });
   }
 
-  const tableName = process.env.USERS_TABLE_NAME;
-  if (!tableName) throw new Error("USERS_TABLE_NAME is required");
+  const tableName = process.env.ORGANIZATIONS_TABLE_NAME;
+  if (!tableName) throw new Error("ORGANIZATIONS_TABLE_NAME is required");
 
-  const users: Record<string, unknown>[] = [];
+  const organizations: Record<string, unknown>[] = [];
   let exclusiveStartKey: Record<string, unknown> | undefined;
   do {
     const result = await dynamodb.send(
@@ -55,9 +55,9 @@ export const handler = async (
         ExclusiveStartKey: exclusiveStartKey,
       }),
     );
-    users.push(...((result.Items ?? []) as Record<string, unknown>[]));
+    organizations.push(...((result.Items ?? []) as Record<string, unknown>[]));
     exclusiveStartKey = result.LastEvaluatedKey;
   } while (exclusiveStartKey);
 
-  return response(event, 200, { users });
+  return response(event, 200, { organizations });
 };

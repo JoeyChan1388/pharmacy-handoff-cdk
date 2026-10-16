@@ -111,7 +111,7 @@ export class AuthStack extends cdk.Stack {
       "CreateUserProfileResolver",
       {
         runtime: lambda.Runtime.NODEJS_24_X,
-        entry: join(__dirname, "../lambda/createUserProfileResolver.ts"),
+        entry: join(__dirname, "../lambda/auth/createUserProfileResolver.ts"),
         handler: "handler",
         description:
           "Creates a profile in the Users table after a user has confirmed their sign-up.",
