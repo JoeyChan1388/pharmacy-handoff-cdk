@@ -134,6 +134,14 @@ active assignment. Example response:
 }
 ```
 
+Active organization members can retrieve details with
+`GET /organizations/{organizationId}/details`. Organization admins receive the
+full roster and all locations, including each member's profile and membership
+status, role, active location IDs, and location assignments. Regular staff
+receive the organization record, their own membership/profile, and only their
+active assigned locations; other members' profiles and assignments are not
+returned. Inactive or invited memberships cannot access the endpoint.
+
 After deploying, retrieve the API base URL from the `ApiUrl` output on the
 `PharmacyHandoffApi` stack, then append the endpoint path and send the Cognito
 JWT in an `Authorization: Bearer <token>` header.

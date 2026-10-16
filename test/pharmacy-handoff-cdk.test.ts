@@ -266,7 +266,7 @@ describe("ApiStack", () => {
         (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
     );
 
-    expect(methods).toHaveLength(7);
+    expect(methods).toHaveLength(8);
     const authorizerIds = new Set<string>();
     for (const method of methods) {
       const properties = method.Properties as {
@@ -281,7 +281,7 @@ describe("ApiStack", () => {
   });
 
   test("uses one profile Lambda with read-only access to the users table", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 9);
+    template.resourceCountIs("AWS::Lambda::Function", 10);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Runtime: "nodejs24.x",
       Handler: "index.handler",
@@ -312,7 +312,7 @@ describe("ApiStack", () => {
       (method) =>
         (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
     );
-    expect(getMethods).toHaveLength(7);
+    expect(getMethods).toHaveLength(8);
     expect(
       getMethods.every(
         (method) =>
@@ -363,8 +363,37 @@ describe("ApiStack", () => {
     }
   });
 
+  test("creates the organization details endpoint with scoped read access", () => {
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.objectLike({
+          ORGANIZATIONS_TABLE_NAME: Match.anyValue(),
+          ORGANIZATION_MEMBERSHIPS_TABLE_NAME: Match.anyValue(),
+          USERS_TABLE_NAME: Match.anyValue(),
+          LOCATIONS_TABLE_NAME: Match.anyValue(),
+          STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME: Match.anyValue(),
+        }),
+      },
+    });
+
+    const getMethods = Object.values(
+      template.findResources("AWS::ApiGateway::Method"),
+    ).filter(
+      (method) =>
+        (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
+    );
+    expect(getMethods).toHaveLength(8);
+    expect(
+      getMethods.every(
+        (method) =>
+          (method.Properties as { AuthorizationType?: string })
+            .AuthorizationType === "COGNITO_USER_POOLS",
+      ),
+    ).toBe(true);
+  });
+
   test("creates an allowlisted platform-admin organization endpoint", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 9);
+    template.resourceCountIs("AWS::Lambda::Function", 10);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({

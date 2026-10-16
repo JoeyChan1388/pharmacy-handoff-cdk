@@ -232,6 +232,43 @@ export class ApiStack extends cdk.Stack {
     props.staffLocationAssignmentsTable.grantReadData(getStaffOrganizations);
 
     /**
+     * GetOrganizationDetails Lambda Function
+     *
+     * This Lambda function is responsible for retrieving the details of a specific organization.
+     */
+    const getOrganizationDetails = new NodejsFunction(
+      this,
+      "GetOrganizationDetailsResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(
+          __dirname,
+          "../lambda/organizations/getOrganizationDetailsResolver.ts",
+        ),
+        handler: "handler",
+        environment: {
+          ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
+          ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
+            props.organizationMembershipsTable.tableName,
+          USERS_TABLE_NAME: props.usersTable.tableName,
+          LOCATIONS_TABLE_NAME: props.locationsTable.tableName,
+          STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME:
+            props.staffLocationAssignmentsTable.tableName,
+          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
+        },
+      },
+    );
+
+    /**
+     * Grant Table Read Permissions to GetOrganizationDetails Lambda Function
+     */
+    props.organizationsTable.grantReadData(getOrganizationDetails);
+    props.organizationMembershipsTable.grantReadData(getOrganizationDetails);
+    props.usersTable.grantReadData(getOrganizationDetails);
+    props.locationsTable.grantReadData(getOrganizationDetails);
+    props.staffLocationAssignmentsTable.grantReadData(getOrganizationDetails);
+
+    /**
      * CreateOrganization Lambda Function
      *
      * This Lambda function is responsible for creating a new organization.
@@ -492,6 +529,7 @@ export class ApiStack extends cdk.Stack {
      */
     const organizationStaff = organizationResource.addResource("staff");
     const organizationLocations = organizationResource.addResource("locations");
+    const organizationDetails = organizationResource.addResource("details");
 
     /**
      * /platform/organizations Resource and
@@ -529,6 +567,23 @@ export class ApiStack extends cdk.Stack {
     staffOrganizations.addMethod(
       "GET",
       new apigateway.LambdaIntegration(getStaffOrganizations),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+
+    /**
+     * GET /organizations/{organizationId}/details Method
+     *
+     * This method is protected by the staff Cognito authorizer and will return
+     * the details of a specific organization, including its staff members and
+     * locations. The Lambda function will handle the retrieval of the
+     * organization details.
+     */
+    organizationDetails.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(getOrganizationDetails),
       {
         authorizationType: apigateway.AuthorizationType.COGNITO,
         authorizer: staffAuthorizer,

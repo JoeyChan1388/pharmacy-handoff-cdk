@@ -99,6 +99,7 @@ export interface StaffOrganizationSummary {
 export interface OrganizationMembership {
   organizationId: string;
   userId: string;
+  email?: string;
   role: "ADMIN" | "STAFF";
   status?: string;
 }
