@@ -1,9 +1,7 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
+import { dynamodb } from "../shared/dynamodb";
 import type { PostConfirmationTriggerEvent } from "aws-lambda";
-
-const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 /**
  * Profile Creation Sources

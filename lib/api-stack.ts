@@ -311,8 +311,19 @@ export class ApiStack extends cdk.Stack {
         },
       },
     );
+
+    /**
+     * Grant Table Read Permissions to ListPlatformOrganizations Lambda Function
+     */
     props.organizationsTable.grantReadData(listPlatformOrganizations);
 
+    /**
+     * ManagePlatformUser Lambda Function
+     *
+     * This Lambda function is responsible for managing platform users. It
+     * allows platform admins to create, update, retrieve, and delete users
+     * in the appropriate Cognito user pool and the users table.
+     */
     const managePlatformUser = new NodejsFunction(
       this,
       "ManagePlatformUserResolver",
@@ -329,7 +340,15 @@ export class ApiStack extends cdk.Stack {
         },
       },
     );
+
+    /**
+     * Grant Table Read/Write Permissions to ManagePlatformUser Lambda Function
+     */
     props.usersTable.grantReadWriteData(managePlatformUser);
+
+    /**
+     * IAM Policies for ManagePlatformUser Lambda Function
+     */
     managePlatformUser.addToRolePolicy(
       new iam.PolicyStatement({
         actions: [
@@ -347,6 +366,13 @@ export class ApiStack extends cdk.Stack {
       }),
     );
 
+    /**
+     * ManagePlatformOrganization Lambda Function
+     *
+     * This Lambda function is responsible for managing platform organizations. It
+     * allows platform admins to create, update, retrieve, and delete organizations
+     * in the organizations table.
+     */
     const managePlatformOrganization = new NodejsFunction(
       this,
       "ManagePlatformOrganizationResolver",
@@ -475,9 +501,8 @@ export class ApiStack extends cdk.Stack {
     const platformUsers = platform.addResource("users");
     const platformOrganizations = platform.addResource("organizations");
     const platformUser = platformUsers.addResource("{userId}");
-    const platformOrganization = platformOrganizations.addResource(
-      "{organizationId}",
-    );
+    const platformOrganization =
+      platformOrganizations.addResource("{organizationId}");
 
     /**
      * GET /staff/me and GET /patient/me Methods
@@ -555,6 +580,15 @@ export class ApiStack extends cdk.Stack {
         authorizer: staffAuthorizer,
       },
     );
+
+    /**
+     * POST /platform/users Method
+     *
+     * This method is protected by the staff Cognito authorizer and will allow
+     * platform admins to create new users. The Lambda function will handle the
+     * creation of the user in the appropriate Cognito user pool and the users
+     * table.
+     */
     platformUsers.addMethod(
       "POST",
       new apigateway.LambdaIntegration(managePlatformUser),
@@ -563,6 +597,14 @@ export class ApiStack extends cdk.Stack {
         authorizer: staffAuthorizer,
       },
     );
+
+    /**
+     * GET /platform/users/{userId} Method
+     *
+     * This method is protected by the staff Cognito authorizer and will allow
+     * platform admins to retrieve information about a specific user.
+     * The Lambda function will handle the retrieval of the user details.
+     */
     platformUser.addMethod(
       "GET",
       new apigateway.LambdaIntegration(managePlatformUser),
@@ -571,6 +613,15 @@ export class ApiStack extends cdk.Stack {
         authorizer: staffAuthorizer,
       },
     );
+
+    /**
+     * PATCH /platform/users/{userId} Method
+     *
+     * This method is protected by the staff Cognito authorizer and will allow
+     * platform admins to update existing users. The Lambda function will handle
+     * the update of the user in the appropriate Cognito user pool and the users
+     * table.
+     */
     platformUser.addMethod(
       "PATCH",
       new apigateway.LambdaIntegration(managePlatformUser),
@@ -579,6 +630,15 @@ export class ApiStack extends cdk.Stack {
         authorizer: staffAuthorizer,
       },
     );
+
+    /**
+     * DELETE /platform/users/{userId} Method
+     *
+     * This method is protected by the staff Cognito authorizer and will allow
+     * platform admins to delete existing users. The Lambda function will handle
+     * the deletion of the user in the appropriate Cognito user pool and the users
+     * table.
+     */
     platformUser.addMethod(
       "DELETE",
       new apigateway.LambdaIntegration(managePlatformUser),
@@ -587,6 +647,14 @@ export class ApiStack extends cdk.Stack {
         authorizer: staffAuthorizer,
       },
     );
+
+    /**
+     * GET /platform/organizations/{organizationId} Method
+     *
+     * This method is protected by the staff Cognito authorizer and will allow
+     * platform admins to retrieve information about a specific organization.
+     * The Lambda function will handle the retrieval of the organization details.
+     */
     platformOrganization.addMethod(
       "GET",
       new apigateway.LambdaIntegration(managePlatformOrganization),
@@ -595,6 +663,14 @@ export class ApiStack extends cdk.Stack {
         authorizer: staffAuthorizer,
       },
     );
+
+    /**
+     * PATCH /platform/organizations/{organizationId} Method
+     *
+     * This method is protected by the staff Cognito authorizer and will allow
+     * platform admins to update information about a specific organization.
+     * The Lambda function will handle the update of the organization details.
+     */
     platformOrganization.addMethod(
       "PATCH",
       new apigateway.LambdaIntegration(managePlatformOrganization),
@@ -603,6 +679,14 @@ export class ApiStack extends cdk.Stack {
         authorizer: staffAuthorizer,
       },
     );
+
+    /**
+     * DELETE /platform/organizations/{organizationId} Method
+     *
+     * This method is protected by the staff Cognito authorizer and will allow
+     * platform admins to delete a specific organization. The Lambda function
+     * will handle the deletion of the organization and any associated data.
+     */
     platformOrganization.addMethod(
       "DELETE",
       new apigateway.LambdaIntegration(managePlatformOrganization),

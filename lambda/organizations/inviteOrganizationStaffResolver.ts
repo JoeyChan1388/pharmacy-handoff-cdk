@@ -3,16 +3,13 @@ import {
   AdminCreateUserCommand,
   AdminGetUserCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
-import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  UpdateCommand,
-} from "@aws-sdk/lib-dynamodb";
-
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { jsonResponse } from "../shared/http";
+import { dynamodb } from "../shared/dynamodb";
+import { getCallerUserId } from "../shared/authorization";
+import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { normalizeEmail, parseJsonBody } from "../shared/validation";
 
 import type {
-  CognitoAuthorizerClaims,
   CognitoUserAttribute,
   InviteOrganizationStaffRequest,
 } from "../shared/types";
@@ -20,41 +17,6 @@ import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 const region = process.env.AWS_REGION;
 const cognito = new CognitoIdentityProviderClient({ region });
-const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({ region }));
-
-const allowedOrigins = new Set(
-  (process.env.ALLOWED_ORIGINS ?? process.env.ALLOWED_ORIGIN ?? "")
-    .split(",")
-    .filter(Boolean),
-);
-
-/**
- * Generates the appropriate response headers for the API Gateway response
- * based on the request's origin and the allowed origins.
- *
- * @param statusCode The HTTP status code for the response.
- * @param body The body of the response.
- * @param origin The origin of the request.
- * @returns The API Gateway proxy result.
- */
-function response(
-  statusCode: number,
-  body: Record<string, unknown>,
-  origin?: string,
-): APIGatewayProxyResult {
-  const allowedOrigin = origin && allowedOrigins.has(origin) ? origin : "null";
-  return {
-    statusCode,
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": allowedOrigin,
-      Vary: "Origin",
-      "Access-Control-Allow-Headers": "Authorization,Content-Type",
-      "Access-Control-Allow-Methods": "OPTIONS,POST",
-    },
-    body: JSON.stringify(body),
-  };
-}
 
 /**
  * InviteOrganizationStaffResolver Handler
@@ -73,18 +35,14 @@ export const handler = async (
   event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> => {
   // Extract the caller's user ID and the organization ID from the event
-  const claims = event.requestContext.authorizer as
-    | CognitoAuthorizerClaims
-    | undefined;
-  const callerUserId = claims?.claims?.sub;
+  const callerUserId = getCallerUserId(event);
   const organizationId = event.pathParameters?.organizationId;
-  const requestOrigin = event.headers.origin ?? event.headers.Origin;
 
   /**
    * Create a response function with the appropriate headers
    */
   const reply = (statusCode: number, body: Record<string, unknown>) =>
-    response(statusCode, body, requestOrigin);
+    jsonResponse(event, statusCode, body);
 
   /**
    * Authorization and Path Parameter Validation
@@ -152,16 +110,13 @@ export const handler = async (
   /**
    * Request Body Validation
    */
-  let body: InviteOrganizationStaffRequest;
-  try {
-    body = JSON.parse(event.body ?? "") as InviteOrganizationStaffRequest;
-  } catch {
+  const body = parseJsonBody<InviteOrganizationStaffRequest>(event);
+  if (!body) {
     return reply(400, { message: "Request body must be valid JSON" });
   }
 
-  const email =
-    typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  const email = normalizeEmail(body.email);
+  if (!email) {
     return reply(400, { message: "A valid email address is required" });
   }
 

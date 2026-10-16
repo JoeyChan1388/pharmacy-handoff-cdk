@@ -1,52 +1,17 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  UpdateCommand,
-} from "@aws-sdk/lib-dynamodb";
-
-import type { CognitoAuthorizerClaims } from "../shared/types";
+import { dynamodb } from "../shared/dynamodb";
+import { parseJsonBody } from "../shared/validation";
+import { jsonResponse as response } from "../shared/http";
+import { authorizePlatformAdmin } from "../shared/authorization";
+import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-
-const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-const platformAdminUserIds = new Set(
-  (process.env.PLATFORM_ADMIN_USER_IDS ?? "").split(",").filter(Boolean),
-);
-const allowedOrigins = new Set(
-  (process.env.ALLOWED_ORIGINS ?? "").split(",").filter(Boolean),
-);
-
-function response(
-  event: APIGatewayProxyEvent,
-  statusCode: number,
-  body: Record<string, unknown>,
-): APIGatewayProxyResult {
-  const origin = event.headers.origin ?? event.headers.Origin;
-  return {
-    statusCode,
-    headers: {
-      "Content-Type": "application/json",
-      ...(origin && allowedOrigins.has(origin)
-        ? { "Access-Control-Allow-Origin": origin, Vary: "Origin" }
-        : {}),
-    },
-    body: JSON.stringify(body),
-  };
-}
 
 export const handler = async (
   event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> => {
-  const claims = event.requestContext.authorizer as
-    | CognitoAuthorizerClaims
-    | undefined;
-  const callerUserId = claims?.claims?.sub;
+  const authorizationError = authorizePlatformAdmin(event);
   const organizationId = event.pathParameters?.organizationId;
 
-  if (!callerUserId) return response(event, 401, { message: "Unauthorized" });
-  if (!platformAdminUserIds.has(callerUserId)) {
-    return response(event, 403, { message: "Platform admin access required" });
-  }
+  if (authorizationError) return authorizationError;
   if (!organizationId) {
     return response(event, 400, { message: "organizationId is required" });
   }
@@ -70,15 +35,19 @@ export const handler = async (
 
   let updates: { name?: string; status?: "ACTIVE" | "INACTIVE" } = {};
   if (event.httpMethod === "PATCH") {
-    let body: { name?: unknown; status?: unknown };
-    try {
-      body = JSON.parse(event.body ?? "") as typeof body;
-    } catch {
-      return response(event, 400, { message: "Request body must be valid JSON" });
+    const body = parseJsonBody<{ name?: unknown; status?: unknown }>(event);
+    if (!body) {
+      return response(event, 400, {
+        message: "Request body must be valid JSON",
+      });
     }
 
     if (body.name !== undefined) {
-      if (typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 120) {
+      if (
+        typeof body.name !== "string" ||
+        !body.name.trim() ||
+        body.name.trim().length > 120
+      ) {
         return response(event, 400, {
           message: "name must contain between 1 and 120 characters",
         });

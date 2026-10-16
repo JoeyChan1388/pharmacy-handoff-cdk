@@ -1,5 +1,4 @@
 import {
-  DynamoDBDocumentClient,
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
 import {
@@ -7,12 +6,13 @@ import {
   AdminDeleteUserCommand,
   CognitoIdentityProviderClient,
 } from "@aws-sdk/client-cognito-identity-provider";
-
 import { randomUUID } from "node:crypto";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { dynamodb } from "../shared/dynamodb";
+import { jsonResponse as response } from "../shared/http";
+import { authorizePlatformAdmin } from "../shared/authorization";
+import { normalizeEmail, parseJsonBody } from "../shared/validation";
 
 import type {
-  CognitoAuthorizerClaims,
   CognitoUserAttribute,
   CreateOrganizationRequest,
 } from "../shared/types";
@@ -20,47 +20,6 @@ import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 const region = process.env.AWS_REGION;
 const cognito = new CognitoIdentityProviderClient({ region });
-const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({ region }));
-
-/**
- * Platform Admin User IDs
- */
-const platformAdminUserIds = new Set(
-  (process.env.PLATFORM_ADMIN_USER_IDS ?? "").split(",").filter(Boolean),
-);
-
-/**
- * Allowed Origins
- */
-const allowedOrigins = new Set(
-  (process.env.ALLOWED_ORIGINS ?? "").split(",").filter(Boolean),
-);
-
-/**
- * Creates a response object for the API Gateway
- *
- * @param event The API Gateway event
- * @param statusCode The HTTP status code
- * @param body The response body
- * @returns The API Gateway response object
- */
-function response(
-  event: APIGatewayProxyEvent,
-  statusCode: number,
-  body: Record<string, unknown>,
-): APIGatewayProxyResult {
-  const origin = event.headers.origin ?? event.headers.Origin;
-  return {
-    statusCode,
-    headers: {
-      "Content-Type": "application/json",
-      ...(origin && allowedOrigins.has(origin)
-        ? { "Access-Control-Allow-Origin": origin, Vary: "Origin" }
-        : {}),
-    },
-    body: JSON.stringify(body),
-  };
-}
 
 /**
  * CreateOrganizationResolver Handler
@@ -78,17 +37,8 @@ function response(
 export const handler = async (
   event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> => {
-  const claims = event.requestContext.authorizer as
-    | CognitoAuthorizerClaims
-    | undefined;
-  const callerUserId = claims?.claims?.sub;
-
-  if (!callerUserId) {
-    return response(event, 401, { message: "Unauthorized" });
-  }
-  if (!platformAdminUserIds.has(callerUserId)) {
-    return response(event, 403, { message: "Platform admin access required" });
-  }
+  const authorizationError = authorizePlatformAdmin(event);
+  if (authorizationError) return authorizationError;
 
   const staffUserPoolId = process.env.STAFF_USER_POOL_ID;
   const usersTableName = process.env.USERS_TABLE_NAME;
@@ -105,10 +55,8 @@ export const handler = async (
     );
   }
 
-  let body: CreateOrganizationRequest;
-  try {
-    body = JSON.parse(event.body ?? "") as CreateOrganizationRequest;
-  } catch {
+  const body = parseJsonBody<CreateOrganizationRequest>(event);
+  if (!body) {
     return response(event, 400, { message: "Request body must be valid JSON" });
   }
 
@@ -116,17 +64,14 @@ export const handler = async (
     typeof body.organizationName === "string"
       ? body.organizationName.trim()
       : "";
-  const adminEmail =
-    typeof body.adminEmail === "string"
-      ? body.adminEmail.trim().toLowerCase()
-      : "";
+  const adminEmail = normalizeEmail(body.adminEmail);
 
   if (!organizationName || organizationName.length > 120) {
     return response(event, 400, {
       message: "organizationName must contain between 1 and 120 characters",
     });
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
+  if (!adminEmail) {
     return response(event, 400, { message: "A valid adminEmail is required" });
   }
 

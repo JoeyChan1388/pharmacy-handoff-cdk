@@ -8,46 +8,17 @@ import {
   ListUsersCommand,
   type UserType,
 } from "@aws-sdk/client-cognito-identity-provider";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  PutCommand,
-  UpdateCommand,
-} from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
-import type { CognitoAuthorizerClaims } from "../shared/types";
+import { authorizePlatformAdmin } from "../shared/authorization";
+import { dynamodb } from "../shared/dynamodb";
+import { jsonResponse as response } from "../shared/http";
+import { normalizeEmail, parseJsonBody } from "../shared/validation";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 type UserPoolType = "STAFF" | "PATIENT";
-type UserStatus = "ACTIVE" | "DISABLED";
 
 const cognito = new CognitoIdentityProviderClient({});
-const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-const platformAdminUserIds = new Set(
-  (process.env.PLATFORM_ADMIN_USER_IDS ?? "").split(",").filter(Boolean),
-);
-const allowedOrigins = new Set(
-  (process.env.ALLOWED_ORIGINS ?? "").split(",").filter(Boolean),
-);
-
-function response(
-  event: APIGatewayProxyEvent,
-  statusCode: number,
-  body: Record<string, unknown>,
-): APIGatewayProxyResult {
-  const origin = event.headers.origin ?? event.headers.Origin;
-  return {
-    statusCode,
-    headers: {
-      "Content-Type": "application/json",
-      ...(origin && allowedOrigins.has(origin)
-        ? { "Access-Control-Allow-Origin": origin, Vary: "Origin" }
-        : {}),
-    },
-    body: JSON.stringify(body),
-  };
-}
 
 function poolId(type: UserPoolType): string {
   const id =
@@ -85,40 +56,37 @@ async function findCognitoUser(
 }
 
 function validName(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0 && value.trim().length <= 100;
+  return (
+    typeof value === "string" &&
+    value.trim().length > 0 &&
+    value.trim().length <= 100
+  );
 }
 
 export const handler = async (
   event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> => {
-  const claims = event.requestContext.authorizer as
-    | CognitoAuthorizerClaims
-    | undefined;
-  const callerUserId = claims?.claims?.sub;
-  if (!callerUserId) return response(event, 401, { message: "Unauthorized" });
-  if (!platformAdminUserIds.has(callerUserId)) {
-    return response(event, 403, { message: "Platform admin access required" });
-  }
+  const authorizationError = authorizePlatformAdmin(event);
+  if (authorizationError) return authorizationError;
 
   const tableName = process.env.USERS_TABLE_NAME;
   if (!tableName) throw new Error("USERS_TABLE_NAME is required");
 
   if (event.httpMethod === "POST") {
-    let body: {
+    const body = parseJsonBody<{
       email?: unknown;
       userPoolType?: unknown;
       givenName?: unknown;
       familyName?: unknown;
-    };
-    try {
-      body = JSON.parse(event.body ?? "") as typeof body;
-    } catch {
-      return response(event, 400, { message: "Request body must be valid JSON" });
+    }>(event);
+    if (!body) {
+      return response(event, 400, {
+        message: "Request body must be valid JSON",
+      });
     }
 
-    const email =
-      typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const email = normalizeEmail(body.email);
+    if (!email) {
       return response(event, 400, { message: "A valid email is required" });
     }
     if (body.userPoolType !== "STAFF" && body.userPoolType !== "PATIENT") {
@@ -127,10 +95,14 @@ export const handler = async (
       });
     }
     if (body.givenName !== undefined && !validName(body.givenName)) {
-      return response(event, 400, { message: "givenName must be 1-100 characters" });
+      return response(event, 400, {
+        message: "givenName must be 1-100 characters",
+      });
     }
     if (body.familyName !== undefined && !validName(body.familyName)) {
-      return response(event, 400, { message: "familyName must be 1-100 characters" });
+      return response(event, 400, {
+        message: "familyName must be 1-100 characters",
+      });
     }
 
     const type = body.userPoolType;
@@ -199,7 +171,10 @@ export const handler = async (
             }),
           );
         } catch (cleanupError) {
-          console.error("Could not remove Cognito user after profile creation failed", cleanupError);
+          console.error(
+            "Could not remove Cognito user after profile creation failed",
+            cleanupError,
+          );
         }
       }
       throw error;
@@ -243,11 +218,13 @@ export const handler = async (
     status?: unknown;
   } = {};
   if (event.httpMethod === "PATCH") {
-    try {
-      body = JSON.parse(event.body ?? "") as typeof body;
-    } catch {
-      return response(event, 400, { message: "Request body must be valid JSON" });
+    const parsedBody = parseJsonBody<typeof body>(event);
+    if (!parsedBody) {
+      return response(event, 400, {
+        message: "Request body must be valid JSON",
+      });
     }
+    body = parsedBody;
   } else {
     body.status = "DISABLED";
   }
@@ -255,9 +232,8 @@ export const handler = async (
   const profileUpdates: Record<string, string> = {};
   const cognitoAttributes: { Name: string; Value: string }[] = [];
   if (body.email !== undefined) {
-    const email =
-      typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const email = normalizeEmail(body.email);
+    if (!email) {
       return response(event, 400, { message: "A valid email is required" });
     }
     profileUpdates.email = email;

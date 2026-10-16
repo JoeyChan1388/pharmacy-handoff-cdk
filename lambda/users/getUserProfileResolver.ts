@@ -1,34 +1,9 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand } from "@aws-sdk/lib-dynamodb";
 
-import type { CognitoAuthorizerClaims } from "../shared/types";
+import { getCallerUserId } from "../shared/authorization";
+import { dynamodb } from "../shared/dynamodb";
+import { jsonResponse } from "../shared/http";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-
-const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-
-const allowedOrigins = new Set(
-  (process.env.ALLOWED_ORIGINS ?? "").split(",").filter(Boolean),
-);
-
-/**
- * Generates the appropriate response headers for the API Gateway response
- * based on the request's origin and the allowed origins.
- *
- * @param event The API Gateway proxy event.
- * @returns The response headers.
- */
-function responseHeaders(event: APIGatewayProxyEvent) {
-  const origin = event.headers.origin ?? event.headers.Origin;
-  return {
-    "Content-Type": "application/json",
-    ...(origin && allowedOrigins.has(origin)
-      ? {
-          "Access-Control-Allow-Origin": origin,
-          Vary: "Origin",
-        }
-      : {}),
-  };
-}
 
 /**
  * GetUserProfileResolver Handler
@@ -38,24 +13,17 @@ function responseHeaders(event: APIGatewayProxyEvent) {
  *
  * @param event Payload that contains the request context and authorizer
  * claims from API Gateway.
- * @returns An APIGatewayProxyResult containing the user profile data or an 
+ * @returns An APIGatewayProxyResult containing the user profile data or an
  * error message.
  */
 export const handler = async (
   event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> => {
   // Extract the user ID from the Cognito authorizer claims from the event.
-  const authorizer = event.requestContext.authorizer as
-    | CognitoAuthorizerClaims
-    | undefined;
-  const userId = authorizer?.claims?.sub;
+  const userId = getCallerUserId(event);
 
   if (!userId) {
-    return {
-      statusCode: 401,
-      headers: responseHeaders(event),
-      body: JSON.stringify({ message: "Unauthorized" }),
-    };
+    return jsonResponse(event, 401, { message: "Unauthorized" });
   }
 
   const tableName = process.env.USERS_TABLE_NAME;
@@ -75,16 +43,8 @@ export const handler = async (
   );
 
   if (!result.Item) {
-    return {
-      statusCode: 404,
-      headers: responseHeaders(event),
-      body: JSON.stringify({ message: "Profile not found" }),
-    };
+    return jsonResponse(event, 404, { message: "Profile not found" });
   }
 
-  return {
-    statusCode: 200,
-    headers: responseHeaders(event),
-    body: JSON.stringify(result.Item),
-  };
+  return jsonResponse(event, 200, result.Item as Record<string, unknown>);
 };

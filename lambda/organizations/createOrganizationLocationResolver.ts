@@ -1,52 +1,17 @@
 import {
-  DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
 } from "@aws-sdk/lib-dynamodb";
-
 import { randomUUID } from "node:crypto";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { dynamodb } from "../shared/dynamodb";
+import { parseJsonBody } from "../shared/validation";
+import { getCallerUserId } from "../shared/authorization";
+import { jsonResponse as response } from "../shared/http";
 
 import type {
-  CognitoAuthorizerClaims,
   CreateOrganizationLocationRequest,
 } from "../shared/types";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-
-const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-
-/**
- * Allowed Origins
- */
-const allowedOrigins = new Set(
-  (process.env.ALLOWED_ORIGINS ?? "").split(",").filter(Boolean),
-);
-
-/**
- * Creates a response object for the API Gateway
- *
- * @param event The API Gateway event
- * @param statusCode The HTTP status code
- * @param body The response body
- * @returns The API Gateway response object
- */
-function response(
-  event: APIGatewayProxyEvent,
-  statusCode: number,
-  body: Record<string, unknown>,
-): APIGatewayProxyResult {
-  const origin = event.headers.origin ?? event.headers.Origin;
-  return {
-    statusCode,
-    headers: {
-      "Content-Type": "application/json",
-      ...(origin && allowedOrigins.has(origin)
-        ? { "Access-Control-Allow-Origin": origin, Vary: "Origin" }
-        : {}),
-    },
-    body: JSON.stringify(body),
-  };
-}
 
 /**
  * Validates an optional text field from the request body. If the value is
@@ -88,10 +53,7 @@ function optionalText(
 export const handler = async (
   event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> => {
-  const claims = event.requestContext.authorizer as
-    | CognitoAuthorizerClaims
-    | undefined;
-  const callerUserId = claims?.claims?.sub;
+  const callerUserId = getCallerUserId(event);
   const organizationId = event.pathParameters?.organizationId;
 
   if (!callerUserId) return response(event, 401, { message: "Unauthorized" });
@@ -136,10 +98,8 @@ export const handler = async (
     return response(event, 409, { message: "Organization is inactive" });
   }
 
-  let body: CreateOrganizationLocationRequest;
-  try {
-    body = JSON.parse(event.body ?? "") as CreateOrganizationLocationRequest;
-  } catch {
+  const body = parseJsonBody<CreateOrganizationLocationRequest>(event);
+  if (!body) {
     return response(event, 400, { message: "Request body must be valid JSON" });
   }
 
