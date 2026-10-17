@@ -90,7 +90,7 @@ locations. Organization memberships, locations, and assignments are retained.
 
 ## Useful commands
 
-* `npm run verify` runs lint, format check, type-check, and tests (same as CI)
+* `npm run verify` runs lint, format check, build, tests, and synth (same as CI)
 * `npm run lint:fix` sorts imports and class members into the house style
 * `npm run format` runs Prettier on all source
 * `npm run test` runs tests

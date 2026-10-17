@@ -14,13 +14,14 @@
     "format": "prettier --write bin lib lambda test",
     "format:check": "prettier --check bin lib lambda test",
     "typecheck": "tsc --noEmit",
-    "verify": "npm run lint && npm run format:check && npm run typecheck && npm test"
+    "verify": "npm run lint && npm run format:check && npm run build && npm test && npm run synth",
+    "synth": "cdk synth --all --quiet"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.164",
     "@types/jest": "^30",
     "@types/node": "^24.10.1",
-    "aws-cdk": "2.1119.0",
+    "aws-cdk": "^2.1145.0",
     "esbuild": "^0.28.2",
     "eslint": "^10.13.0",
     "eslint-plugin-jsdoc": "^63.3.3",
