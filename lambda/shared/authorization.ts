@@ -3,6 +3,12 @@ import { jsonResponse } from "./http";
 import type { CognitoAuthorizerClaims } from "./types";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
+/**
+ * Platform Admin User IDs
+ *
+ * Cognito subs allowed to call the /platform/* endpoints, read once from the
+ * comma-separated PLATFORM_ADMIN_USER_IDS environment variable.
+ */
 const platformAdminUserIds = new Set(
   (process.env.PLATFORM_ADMIN_USER_IDS ?? "").split(",").filter(Boolean),
 );

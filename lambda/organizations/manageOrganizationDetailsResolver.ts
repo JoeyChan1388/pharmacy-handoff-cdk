@@ -1,8 +1,13 @@
 import { jsonResponse } from "../shared/http";
-import { parseJsonBody } from "../shared/validation";
-import { dynamodb, queryAll } from "../shared/dynamodb";
 import { getCallerUserId } from "../shared/authorization";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { parseJsonBody, requiredText } from "../shared/validation";
+import { buildUpdateExpression, dynamodb, queryAll } from "../shared/dynamodb";
+import {
+  isAccessError,
+  loadOrganizationAccess,
+  type OrganizationRecord,
+} from "../shared/organizations";
 
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import type {
@@ -10,6 +15,24 @@ import type {
   OrganizationMembership,
   StaffLocationAssignment,
 } from "../shared/types";
+
+/**
+ * Maximum length of an organization name.
+ */
+const NAME_MAX_LENGTH = 120;
+
+/**
+ * Config
+ *
+ * Table names the resolver reads from the environment.
+ */
+interface Config {
+  usersTable: string;
+  locationsTable: string;
+  assignmentsTable: string;
+  membershipsTable: string;
+  organizationsTable: string;
+}
 
 /**
  * OrganizationUser
@@ -41,172 +64,218 @@ interface OrganizationLocationDetails extends OrganizationLocation {
 }
 
 /**
- * ManageOrganizationDetailsResolver Handler
+ * Reads the required table names from the environment, throwing when any
+ * value is missing so the deployment error surfaces immediately.
  *
- * Single Lambda for the organization details resource, used by organization
- * members (not platform admins):
- *
- * - GET   /organizations/{organizationId}/details  roster and locations,
- *         scoped to the caller's role
- * - PATCH /organizations/{organizationId}/details  update the organization
- *         name; requires an active ADMIN membership
- * - DELETE /organizations/{organizationId}/details soft-delete by marking
- *         the organization INACTIVE; requires an active ADMIN membership
+ * @returns The resolved configuration
  */
-export const handler = async (
-  event: APIGatewayProxyEvent,
-): Promise<APIGatewayProxyResult> => {
-  const callerUserId = getCallerUserId(event);
-  if (!callerUserId) {
-    return jsonResponse(event, 401, { message: "Unauthorized" });
-  }
-
-  const organizationId = event.pathParameters?.organizationId;
-  if (!organizationId) {
-    return jsonResponse(event, 400, {
-      message: "organizationId is required",
-    });
-  }
-
-  const tableNames = {
-    organizations: process.env.ORGANIZATIONS_TABLE_NAME,
-    memberships: process.env.ORGANIZATION_MEMBERSHIPS_TABLE_NAME,
-    users: process.env.USERS_TABLE_NAME,
-    locations: process.env.LOCATIONS_TABLE_NAME,
-    assignments: process.env.STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME,
+function loadConfig(): Config {
+  const config = {
+    usersTable: process.env.USERS_TABLE_NAME,
+    locationsTable: process.env.LOCATIONS_TABLE_NAME,
+    assignmentsTable: process.env.STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME,
+    membershipsTable: process.env.ORGANIZATION_MEMBERSHIPS_TABLE_NAME,
+    organizationsTable: process.env.ORGANIZATIONS_TABLE_NAME,
   };
-  if (Object.values(tableNames).some((tableName) => !tableName)) {
+  if (Object.values(config).some((value) => !value)) {
     throw new Error(
       "Organization details Lambda is missing table configuration",
     );
   }
+  return config as Config;
+}
 
-  const callerMembership = await dynamodb.send(
-    new GetCommand({
-      TableName: tableNames.memberships,
-      Key: { organizationId, userId: callerUserId },
-      ConsistentRead: true,
+/**
+ * Loads a member's profile and their active location IDs within the
+ * organization.
+ *
+ * @param config The resolved environment configuration
+ * @param membership The member's organization membership
+ * @param organizationId The organization being described
+ * @returns The member with profile fields and active location IDs
+ */
+async function loadOrganizationUser(
+  config: Config,
+  membership: OrganizationMembership,
+  organizationId: string,
+): Promise<OrganizationUser> {
+  const [profileResult, assignments] = await Promise.all([
+    dynamodb.send(
+      new GetCommand({
+        TableName: config.usersTable,
+        Key: { userId: membership.userId },
+      }),
+    ),
+    queryAll<StaffLocationAssignment>({
+      TableName: config.assignmentsTable,
+      KeyConditionExpression: "userId = :userId",
+      ExpressionAttributeValues: { ":userId": membership.userId },
     }),
-  );
-  if (
-    !callerMembership.Item ||
-    callerMembership.Item.status !== "ACTIVE" ||
-    !["ADMIN", "STAFF"].includes(callerMembership.Item.role)
-  ) {
-    return jsonResponse(event, 403, {
-      message: "Active organization membership required",
-    });
-  }
-  const isOrganizationAdmin = callerMembership.Item.role === "ADMIN";
+  ]);
+  const profile = profileResult.Item;
 
-  const organizationResult = await dynamodb.send(
-    new GetCommand({
-      TableName: tableNames.organizations,
-      Key: { organizationId },
-      ConsistentRead: true,
-    }),
-  );
-  if (!organizationResult.Item) {
-    return jsonResponse(event, 404, { message: "Organization not found" });
-  }
-  if (organizationResult.Item.status === "INACTIVE") {
-    return jsonResponse(event, 409, { message: "Organization is inactive" });
-  }
-
-  if (event.httpMethod === "PATCH" || event.httpMethod === "DELETE") {
-    if (!isOrganizationAdmin) {
-      return jsonResponse(event, 403, {
-        message: "Organization admin access required",
-      });
-    }
-    if (event.httpMethod === "DELETE") {
-      return applyUpdates(event, tableNames.organizations!, organizationId, {
-        status: "INACTIVE",
-      });
-    }
-    return handleUpdate(event, tableNames.organizations!, organizationId);
-  }
-  if (event.httpMethod !== "GET") {
-    return jsonResponse(event, 405, { message: "Method not allowed" });
-  }
-
-  let usersWithAssignments: OrganizationUser[];
-  let locations: OrganizationLocation[];
-
-  if (isOrganizationAdmin) {
-    const [memberships, allLocations] = await Promise.all([
-      queryAll<OrganizationMembership>({
-        TableName: tableNames.memberships,
-        KeyConditionExpression: "organizationId = :organizationId",
-        ExpressionAttributeValues: { ":organizationId": organizationId },
-      }),
-      queryAll<OrganizationLocation>({
-        TableName: tableNames.locations,
-        KeyConditionExpression: "organizationId = :organizationId",
-        ExpressionAttributeValues: { ":organizationId": organizationId },
-      }),
-    ]);
-    locations = allLocations;
-    usersWithAssignments = await Promise.all(
-      memberships.map(async (membership): Promise<OrganizationUser> => {
-        const [profileResult, assignments] = await Promise.all([
-          dynamodb.send(
-            new GetCommand({
-              TableName: tableNames.users,
-              Key: { userId: membership.userId },
-            }),
-          ),
-          queryAll<StaffLocationAssignment>({
-            TableName: tableNames.assignments,
-            KeyConditionExpression: "userId = :userId",
-            ExpressionAttributeValues: { ":userId": membership.userId },
-          }),
-        ]);
-        const profile = profileResult.Item;
-        return {
-          userId: membership.userId,
-          email: profile?.email ?? membership.email,
-          givenName: profile?.givenName,
-          familyName: profile?.familyName,
-          role: membership.role,
-          status: membership.status,
-          userStatus: profile?.status,
-          locationIds: assignments
-            .filter(
-              (assignment) =>
-                assignment.organizationId === organizationId &&
-                assignment.status === "ACTIVE",
-            )
-            .map((assignment) => assignment.locationId),
-        };
-      }),
-    );
-  } else {
-    const [profileResult, assignments] = await Promise.all([
-      dynamodb.send(
-        new GetCommand({
-          TableName: tableNames.users,
-          Key: { userId: callerUserId },
-        }),
-      ),
-      queryAll<StaffLocationAssignment>({
-        TableName: tableNames.assignments,
-        KeyConditionExpression: "userId = :userId",
-        ExpressionAttributeValues: { ":userId": callerUserId },
-      }),
-    ]);
-    const assignedLocationIds = assignments
+  return {
+    userId: membership.userId,
+    email: profile?.email ?? membership.email,
+    givenName: profile?.givenName,
+    familyName: profile?.familyName,
+    role: membership.role,
+    status: membership.status,
+    userStatus: profile?.status,
+    locationIds: assignments
       .filter(
         (assignment) =>
           assignment.organizationId === organizationId &&
           assignment.status === "ACTIVE",
       )
-      .map((assignment) => assignment.locationId);
+      .map((assignment) => assignment.locationId),
+  };
+}
+
+/**
+ * ManageOrganizationDetailsResolver Handler
+ *
+ * Single Lambda for the organization details resource, used by organization
+ * members rather than platform admins:
+ *
+ * - GET    /organizations/{organizationId}/details  roster and locations,
+ *          scoped to the caller's role
+ * - PATCH  /organizations/{organizationId}/details  update the organization
+ *          name; requires an active ADMIN membership
+ * - DELETE /organizations/{organizationId}/details  soft-delete by marking
+ *          the organization INACTIVE; requires an active ADMIN membership
+ *
+ * @param event The API Gateway event containing the request details
+ * and authorizer claims.
+ * @returns An APIGatewayProxyResult for the requested operation.
+ */
+export const handler = async (
+  event: APIGatewayProxyEvent,
+): Promise<APIGatewayProxyResult> => {
+  const callerUserId = getCallerUserId(event);
+  const organizationId = event.pathParameters?.organizationId;
+
+  if (!callerUserId) {
+    return jsonResponse(event, 401, { message: "Unauthorized" });
+  }
+  if (!organizationId) {
+    return jsonResponse(event, 400, { message: "organizationId is required" });
+  }
+
+  const config = loadConfig();
+
+  /**
+   * Organization Access Check
+   *
+   * Any active member may read; the organization must be active.
+   */
+  const access = await loadOrganizationAccess(
+    event,
+    callerUserId,
+    organizationId,
+    {
+      organizationsTable: config.organizationsTable,
+      membershipsTable: config.membershipsTable,
+      allowedRoles: ["ADMIN", "STAFF"],
+    },
+  );
+  if (isAccessError(access)) return access;
+
+  // Pin the key fields to the request so the stored item cannot drift them.
+  const callerMembership: OrganizationMembership = {
+    ...access.membership,
+    userId: callerUserId,
+    organizationId,
+  };
+  const isAdmin = callerMembership.role === "ADMIN";
+
+  /**
+   * Route Dispatch
+   *
+   * Writes are limited to organization admins.
+   */
+  switch (event.httpMethod) {
+    case "GET":
+      return getDetails(event, config, callerMembership, access.organization);
+    case "PATCH":
+    case "DELETE":
+      if (!isAdmin) {
+        return jsonResponse(event, 403, {
+          message: "Organization admin access required",
+        });
+      }
+      return event.httpMethod === "PATCH"
+        ? updateOrganization(event, config, organizationId)
+        : deleteOrganization(event, config, organizationId);
+    default:
+      return jsonResponse(event, 405, { message: "Method not allowed" });
+  }
+};
+
+/**
+ * Get Details
+ *
+ * Returns the organization, its members, and its locations. Admins receive
+ * the full roster and every location. Staff receive only their own
+ * membership and the active locations they are assigned to.
+ *
+ * @param event The API Gateway event
+ * @param config The resolved environment configuration
+ * @param callerMembership The caller's membership record
+ * @param organization The organization record
+ * @returns A 200 response with organization, users, and locations
+ */
+async function getDetails(
+  event: APIGatewayProxyEvent,
+  config: Config,
+  callerMembership: OrganizationMembership,
+  organization: OrganizationRecord,
+): Promise<APIGatewayProxyResult> {
+  const { organizationId } = callerMembership;
+  let users: OrganizationUser[];
+  let locations: OrganizationLocation[];
+
+  if (callerMembership.role === "ADMIN") {
+    /**
+     * Admin View
+     *
+     * Load every membership and every location, then enrich each member
+     * with their profile and assignments.
+     */
+    const [memberships, allLocations] = await Promise.all([
+      queryAll<OrganizationMembership>({
+        TableName: config.membershipsTable,
+        KeyConditionExpression: "organizationId = :organizationId",
+        ExpressionAttributeValues: { ":organizationId": organizationId },
+      }),
+      queryAll<OrganizationLocation>({
+        TableName: config.locationsTable,
+        KeyConditionExpression: "organizationId = :organizationId",
+        ExpressionAttributeValues: { ":organizationId": organizationId },
+      }),
+    ]);
+    locations = allLocations;
+    users = await Promise.all(
+      memberships.map((membership) =>
+        loadOrganizationUser(config, membership, organizationId),
+      ),
+    );
+  } else {
+    /**
+     * Staff View
+     *
+     * Load only the caller and the active locations they are assigned to.
+     */
+    const caller = await loadOrganizationUser(
+      config,
+      callerMembership,
+      organizationId,
+    );
     const locationResults = await Promise.all(
-      assignedLocationIds.map((locationId) =>
+      caller.locationIds.map((locationId) =>
         dynamodb.send(
           new GetCommand({
-            TableName: tableNames.locations,
+            TableName: config.locationsTable,
             Key: { organizationId, locationId },
           }),
         ),
@@ -218,26 +287,17 @@ export const handler = async (
         (location): location is OrganizationLocation =>
           location !== undefined && location.status !== "INACTIVE",
       );
-
-    const profile = profileResult.Item;
-    usersWithAssignments = [
-      {
-        userId: callerUserId,
-        email: profile?.email ?? callerMembership.Item.email,
-        givenName: profile?.givenName,
-        familyName: profile?.familyName,
-        role: callerMembership.Item.role,
-        status: callerMembership.Item.status,
-        userStatus: profile?.status,
-        locationIds: locations.map((location) => location.locationId),
-      },
-    ];
+    caller.locationIds = locations.map((location) => location.locationId);
+    users = [caller];
   }
 
+  /**
+   * Attach Assigned Users to Each Location
+   */
   const locationsWithUsers: OrganizationLocationDetails[] = locations.map(
     (location) => ({
       ...location,
-      assignedUsers: usersWithAssignments
+      assignedUsers: users
         .filter((user) => user.locationIds.includes(location.locationId))
         .map(({ userId, email, role, status }) => ({
           userId,
@@ -249,20 +309,27 @@ export const handler = async (
   );
 
   return jsonResponse(event, 200, {
-    organization: organizationResult.Item,
-    users: usersWithAssignments,
+    organization,
+    users,
     locations: locationsWithUsers,
   });
-};
+}
 
 /**
- * Updates the fields of an organization that an organization admin may edit.
- * Status is deliberately excluded; only platform admins can activate or
- * deactivate an organization.
+ * Update Organization
+ *
+ * Renames the organization. Status is deliberately excluded; only platform
+ * admins can activate or deactivate an organization through this route's
+ * platform counterpart.
+ *
+ * @param event The API Gateway event
+ * @param config The resolved environment configuration
+ * @param organizationId The organization to rename
+ * @returns A 200 response with the updated organization, or a 400 error
  */
-async function handleUpdate(
+async function updateOrganization(
   event: APIGatewayProxyEvent,
-  organizationsTable: string,
+  config: Config,
   organizationId: string,
 ): Promise<APIGatewayProxyResult> {
   const body = parseJsonBody<{ name?: unknown }>(event);
@@ -271,50 +338,60 @@ async function handleUpdate(
       message: "Request body must be valid JSON",
     });
   }
-  if (
-    typeof body.name !== "string" ||
-    !body.name.trim() ||
-    body.name.trim().length > 120
-  ) {
+
+  const name = requiredText(body.name, NAME_MAX_LENGTH);
+  if (!name) {
     return jsonResponse(event, 400, {
-      message: "name must contain between 1 and 120 characters",
+      message: `name must contain between 1 and ${NAME_MAX_LENGTH} characters`,
     });
   }
 
-  return applyUpdates(event, organizationsTable, organizationId, {
-    name: body.name.trim(),
+  return applyOrganizationUpdates(event, config, organizationId, { name });
+}
+
+/**
+ * Delete Organization
+ *
+ * Soft-deletes the organization by marking it INACTIVE. Memberships,
+ * locations, and assignments are retained.
+ *
+ * @param event The API Gateway event
+ * @param config The resolved environment configuration
+ * @param organizationId The organization to deactivate
+ * @returns A 200 response with the updated organization
+ */
+async function deleteOrganization(
+  event: APIGatewayProxyEvent,
+  config: Config,
+  organizationId: string,
+): Promise<APIGatewayProxyResult> {
+  return applyOrganizationUpdates(event, config, organizationId, {
+    status: "INACTIVE",
   });
 }
 
 /**
- * Writes a set of field updates to the organization and returns the new item.
+ * Apply Organization Updates
+ *
+ * Writes a set of field changes to the organization and returns the new item.
+ *
+ * @param event The API Gateway event
+ * @param config The resolved environment configuration
+ * @param organizationId The organization to update
+ * @param updates The fields to set
+ * @returns A 200 response with the updated organization
  */
-async function applyUpdates(
+async function applyOrganizationUpdates(
   event: APIGatewayProxyEvent,
-  organizationsTable: string,
+  config: Config,
   organizationId: string,
   updates: Record<string, string>,
 ): Promise<APIGatewayProxyResult> {
-  const expressionNames: Record<string, string> = {
-    "#updatedAt": "updatedAt",
-  };
-  const expressionValues: Record<string, string> = {
-    ":updatedAt": new Date().toISOString(),
-  };
-  const expressions = ["#updatedAt = :updatedAt"];
-  for (const [field, value] of Object.entries(updates)) {
-    expressionNames[`#${field}`] = field;
-    expressionValues[`:${field}`] = value;
-    expressions.push(`#${field} = :${field}`);
-  }
-
   const result = await dynamodb.send(
     new UpdateCommand({
-      TableName: organizationsTable,
+      TableName: config.organizationsTable,
       Key: { organizationId },
-      UpdateExpression: `SET ${expressions.join(", ")}`,
-      ExpressionAttributeNames: expressionNames,
-      ExpressionAttributeValues: expressionValues,
+      ...buildUpdateExpression(updates),
       ConditionExpression: "attribute_exists(organizationId)",
       ReturnValues: "ALL_NEW",
     }),

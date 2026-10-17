@@ -1,5 +1,11 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
+/**
+ * Allowed CORS Origins
+ *
+ * Browser origins permitted to call the API, read once from the
+ * comma-separated ALLOWED_ORIGINS environment variable.
+ */
 const allowedOrigins = new Set(
   (process.env.ALLOWED_ORIGINS ?? process.env.ALLOWED_ORIGIN ?? "")
     .split(",")
@@ -7,7 +13,8 @@ const allowedOrigins = new Set(
 );
 
 /**
- * Creates a response object for the API Gateway
+ * Builds a JSON API Gateway response, echoing the request origin in the CORS
+ * header when it is on the allowlist.
  *
  * @param event The API Gateway event
  * @param statusCode The HTTP status code

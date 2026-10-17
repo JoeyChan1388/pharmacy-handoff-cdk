@@ -83,7 +83,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["test/**/*.ts", "scripts/**"],
+    files: ["test/**/*.ts"],
     rules: { "jsdoc/require-jsdoc": "off" },
   },
 );

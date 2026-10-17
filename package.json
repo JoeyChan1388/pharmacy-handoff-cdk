@@ -8,13 +8,11 @@
     "build": "tsc",
     "watch": "tsc -w",
     "test": "jest",
-    "test:profile-flow": "node --env-file=.env scripts/test-cognito-profile-flow.mjs",
-    "seed:organization": "node --env-file=.env scripts/seed-organization.mjs",
     "cdk": "cdk",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "format": "prettier --write bin lib lambda test scripts",
-    "format:check": "prettier --check bin lib lambda test scripts"
+    "format": "prettier --write bin lib lambda test",
+    "format:check": "prettier --check bin lib lambda test"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.164",

@@ -37,5 +37,4 @@ new ApiStack(app, "PharmacyHandoffApi", {
   organizationsTable: dataStack.organizationsTable,
   organizationMembershipsTable: dataStack.organizationMembershipsTable,
   staffLocationAssignmentsTable: dataStack.staffLocationAssignmentsTable,
-  
 });

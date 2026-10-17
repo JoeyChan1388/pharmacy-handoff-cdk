@@ -8,8 +8,9 @@ import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 /**
  * GetUserProfileResolver Handler
  *
- * Triggered by an API Gateway GET request to retrieve a user profile from the
- * DynamoDB Users table. The user must be authenticated via Cognito, and their
+ * Handles GET /staff/me and GET /patient/me. Returns the caller's own profile
+ * from the users table. The caller is identified by the Cognito sub in the
+ * authorizer claims, so no path parameters are needed.
  *
  * @param event Payload that contains the request context and authorizer
  * claims from API Gateway.
@@ -32,8 +33,10 @@ export const handler = async (
   }
 
   /**
-   * Retrieve the user profile from the DynamoDB Users table using the user ID.
-   * If the profile is not found, return a 404 response.
+   * Load the Profile
+   *
+   * The profile is keyed by the Cognito sub, so a missing item means the
+   * post-confirmation trigger has not run for this user yet.
    */
   const result = await dynamodb.send(
     new GetCommand({

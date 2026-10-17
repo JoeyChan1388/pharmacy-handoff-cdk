@@ -289,7 +289,7 @@ export class ApiStack extends cdk.Stack {
       "ManagePlatformUserResolver",
       {
         runtime: lambda.Runtime.NODEJS_24_X,
-        entry: join(__dirname, "../lambda/users/managePlatformUserResolver.ts"),
+        entry: join(__dirname, "../lambda/platform/manageUsersResolver.ts"),
         handler: "handler",
         environment: {
           USERS_TABLE_NAME: props.usersTable.tableName,
@@ -342,7 +342,7 @@ export class ApiStack extends cdk.Stack {
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(
           __dirname,
-          "../lambda/organizations/managePlatformOrganizationResolver.ts",
+          "../lambda/platform/manageOrganizationsResolver.ts",
         ),
         handler: "handler",
         description: "Lambda function to manage platform organizations",

@@ -3,6 +3,7 @@ import { jest } from "@jest/globals";
 import type { APIGatewayProxyEvent } from "aws-lambda";
 
 jest.mock("../lambda/shared/dynamodb", () => ({
+  ...jest.requireActual<object>("../lambda/shared/dynamodb"),
   dynamodb: { send: jest.fn() },
   queryAll: jest.fn(),
 }));
