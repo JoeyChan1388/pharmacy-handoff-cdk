@@ -80,7 +80,8 @@ The remaining platform CRUD routes are:
 	`DELETE` disables the Cognito account and marks its profile `DISABLED`.
 * `GET /platform/organizations/{organizationId}` retrieves one organization.
 	`PATCH` accepts `name` and/or `status` (`ACTIVE` or `INACTIVE`). `DELETE`
-	marks the organization `INACTIVE`; it can be reactivated with `PATCH`.
+	marks the organization `INACTIVE`; only a platform admin can reactivate it
+	with `PATCH`, organization admins cannot.
 
 All of these routes require the staff-pool ID token and platform-admin
 allowlist check. Deactivated organizations remain visible in platform lists,
@@ -89,7 +90,9 @@ locations. Organization memberships, locations, and assignments are retained.
 
 ## Useful commands
 
-* `npm run build` compiles TypeScript
+* `npm run verify` runs lint, format check, type-check, and tests (same as CI)
+* `npm run lint:fix` sorts imports and class members into the house style
+* `npm run format` runs Prettier on all source
 * `npm run test` runs tests
 * `cdk deploy --all --profile personal` deploys all stacks
 * `cdk diff --all --profile personal` compares all stacks with AWS
@@ -225,41 +228,27 @@ and retains its record and assignments; it does not hard-delete data. The
 organization must be active and the caller must have an active `ADMIN`
 membership for all location operations.
 
-## Cognito Profile Integration Test
+## Contributing
 
-This opt-in test creates a unique patient account, confirms and authenticates
-it through Cognito SRP, verifies `GET /patient/me` returns the profile, checks
-the DynamoDB record, and deletes both temporary records. It sends a sign-up
-verification email to a unique plus-address based on `TEST_EMAIL`; use a
-disposable or catch-all inbox. The test requires AWS credentials with permission
-to sign up/confirm/delete users and read/delete items from the users table.
+CI runs `npm run verify` on every pull request. Run it locally before pushing.
 
-1. Copy `.env.example` to `.env` and set the deployed patient pool ID, app client
-	ID, users table name, API base URL, region, AWS profile, and disposable
-	`TEST_EMAIL`.
-2. Review the values and run:
+Conventions the linter enforces, and the intent behind them:
 
-```sh
-npm run test:profile-flow -- --confirm
-```
-
-The explicit `--confirm` flag is required because the script changes AWS
-resources. `.env` is ignored by Git; do not put AWS access keys in it.
-
-## Seed Organization
-
-To create or update the example Shoppers Drug Mart organization, its Oshawa
-location, and an organization-admin staff account, set the staff pool ID and
-table names in `.env`. Set `AWS_REGION` to the Region containing the deployed
-staff pool and tables, and set `SEED_ADMIN_EMAIL` to the admin's email address.
-The script creates a Cognito staff user and sends an invitation if the user
-does not already exist. The user must use that invitation to set a permanent
-password. The seed can be rerun safely; it upserts the same organization,
-location, staff user profile, and membership records.
-
-```sh
-npm run seed:organization -- --confirm
-```
-
-The example location has only city and province set; add a real street address
-once you identify the specific Oshawa pharmacy branch.
+* **One Lambda per resource.** Each resolver under `lambda/` owns every HTTP
+	method for its resource and dispatches on `event.httpMethod`. Platform-admin
+	resolvers live in `lambda/platform/`, organization-member resolvers in
+	`lambda/organizations/`, and self-service ones in `lambda/users/`.
+* **Handler shape.** Read config with a `loadConfig` helper, check auth, then
+	`switch` on method into small `listX` / `getX` / `createX` / `updateX` /
+	`deleteX` functions. Use `createUserProfileResolver.ts` as the reference.
+* **Shared helpers first.** Membership and organization checks go through
+	`loadOrganizationAccess`, update expressions through `buildUpdateExpression`,
+	and body parsing through `parseJsonBody`. Add to `lambda/shared/` rather than
+	re-implementing.
+* **Imports and members sorted short to long**, grouped named, namespace, then
+	type imports. `npm run lint:fix` does this for you.
+* **JSDoc on everything exported or top-level.** A one-line title, a blank
+	line, then a description. Use titled JSDoc blocks to mark stages inside long
+	functions and `//` for one-line guards.
+* **Soft deletes only.** `DELETE` sets `status` to `INACTIVE` or `DISABLED`;
+	nothing is removed from DynamoDB or Cognito.
