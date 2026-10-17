@@ -1,8 +1,8 @@
-import { GetCommand } from "@aws-sdk/lib-dynamodb";
-
-import { getCallerUserId } from "../shared/authorization";
-import { dynamodb, queryAll } from "../shared/dynamodb";
 import { jsonResponse } from "../shared/http";
+import { parseJsonBody } from "../shared/validation";
+import { dynamodb, queryAll } from "../shared/dynamodb";
+import { getCallerUserId } from "../shared/authorization";
+import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
 import type {
   OrganizationMembership,
@@ -26,6 +26,19 @@ interface OrganizationLocationDetails extends OrganizationLocation {
   assignedUsers: Pick<OrganizationUser, "userId" | "email" | "role" | "status">[];
 }
 
+/**
+ * ManageOrganizationDetailsResolver Handler
+ *
+ * Single Lambda for the organization details resource, used by organization
+ * members (not platform admins):
+ *
+ * - GET   /organizations/{organizationId}/details  roster and locations,
+ *         scoped to the caller's role
+ * - PATCH /organizations/{organizationId}/details  update the organization
+ *         name; requires an active ADMIN membership
+ * - DELETE /organizations/{organizationId}/details soft-delete by marking
+ *         the organization INACTIVE; requires an active ADMIN membership
+ */
 export const handler = async (
   event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> => {
@@ -82,6 +95,23 @@ export const handler = async (
   }
   if (organizationResult.Item.status === "INACTIVE") {
     return jsonResponse(event, 409, { message: "Organization is inactive" });
+  }
+
+  if (event.httpMethod === "PATCH" || event.httpMethod === "DELETE") {
+    if (!isOrganizationAdmin) {
+      return jsonResponse(event, 403, {
+        message: "Organization admin access required",
+      });
+    }
+    if (event.httpMethod === "DELETE") {
+      return applyUpdates(event, tableNames.organizations!, organizationId, {
+        status: "INACTIVE",
+      });
+    }
+    return handleUpdate(event, tableNames.organizations!, organizationId);
+  }
+  if (event.httpMethod !== "GET") {
+    return jsonResponse(event, 405, { message: "Method not allowed" });
   }
 
   let usersWithAssignments: OrganizationUser[];
@@ -168,7 +198,10 @@ export const handler = async (
     );
     locations = locationResults
       .map((result) => result.Item as OrganizationLocation | undefined)
-      .filter((location): location is OrganizationLocation => Boolean(location));
+      .filter(
+        (location): location is OrganizationLocation =>
+          location !== undefined && location.status !== "INACTIVE",
+      );
 
     const profile = profileResult.Item;
     usersWithAssignments = [
@@ -205,3 +238,70 @@ export const handler = async (
     locations: locationsWithUsers,
   });
 };
+
+/**
+ * Updates the fields of an organization that an organization admin may edit.
+ * Status is deliberately excluded; only platform admins can activate or
+ * deactivate an organization.
+ */
+async function handleUpdate(
+  event: APIGatewayProxyEvent,
+  organizationsTable: string,
+  organizationId: string,
+): Promise<APIGatewayProxyResult> {
+  const body = parseJsonBody<{ name?: unknown }>(event);
+  if (!body) {
+    return jsonResponse(event, 400, {
+      message: "Request body must be valid JSON",
+    });
+  }
+  if (
+    typeof body.name !== "string" ||
+    !body.name.trim() ||
+    body.name.trim().length > 120
+  ) {
+    return jsonResponse(event, 400, {
+      message: "name must contain between 1 and 120 characters",
+    });
+  }
+
+  return applyUpdates(event, organizationsTable, organizationId, {
+    name: body.name.trim(),
+  });
+}
+
+/**
+ * Writes a set of field updates to the organization and returns the new item.
+ */
+async function applyUpdates(
+  event: APIGatewayProxyEvent,
+  organizationsTable: string,
+  organizationId: string,
+  updates: Record<string, string>,
+): Promise<APIGatewayProxyResult> {
+  const expressionNames: Record<string, string> = {
+    "#updatedAt": "updatedAt",
+  };
+  const expressionValues: Record<string, string> = {
+    ":updatedAt": new Date().toISOString(),
+  };
+  const expressions = ["#updatedAt = :updatedAt"];
+  for (const [field, value] of Object.entries(updates)) {
+    expressionNames[`#${field}`] = field;
+    expressionValues[`:${field}`] = value;
+    expressions.push(`#${field} = :${field}`);
+  }
+
+  const result = await dynamodb.send(
+    new UpdateCommand({
+      TableName: organizationsTable,
+      Key: { organizationId },
+      UpdateExpression: `SET ${expressions.join(", ")}`,
+      ExpressionAttributeNames: expressionNames,
+      ExpressionAttributeValues: expressionValues,
+      ConditionExpression: "attribute_exists(organizationId)",
+      ReturnValues: "ALL_NEW",
+    }),
+  );
+  return jsonResponse(event, 200, { organization: result.Attributes });
+}

@@ -266,7 +266,7 @@ describe("ApiStack", () => {
         (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
     );
 
-    expect(methods).toHaveLength(8);
+    expect(methods).toHaveLength(10);
     const authorizerIds = new Set<string>();
     for (const method of methods) {
       const properties = method.Properties as {
@@ -281,7 +281,7 @@ describe("ApiStack", () => {
   });
 
   test("uses one profile Lambda with read-only access to the users table", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 10);
+    template.resourceCountIs("AWS::Lambda::Function", 7);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Runtime: "nodejs24.x",
       Handler: "index.handler",
@@ -312,7 +312,7 @@ describe("ApiStack", () => {
       (method) =>
         (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
     );
-    expect(getMethods).toHaveLength(8);
+    expect(getMethods).toHaveLength(10);
     expect(
       getMethods.every(
         (method) =>
@@ -382,7 +382,7 @@ describe("ApiStack", () => {
       (method) =>
         (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
     );
-    expect(getMethods).toHaveLength(8);
+    expect(getMethods).toHaveLength(10);
     expect(
       getMethods.every(
         (method) =>
@@ -393,7 +393,7 @@ describe("ApiStack", () => {
   });
 
   test("creates an allowlisted platform-admin organization endpoint", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 10);
+    template.resourceCountIs("AWS::Lambda::Function", 7);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({
@@ -428,7 +428,7 @@ describe("ApiStack", () => {
     });
   });
 
-  test("creates platform-admin list resolvers with table scan access", () => {
+  test("grants platform-admin list operations table scan access", () => {
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({
@@ -518,7 +518,12 @@ describe("ApiStack", () => {
             Effect: "Allow",
           }),
           Match.objectLike({
-            Action: "dynamodb:PutItem",
+            Action: Match.arrayWith([
+              "dynamodb:GetItem",
+              "dynamodb:Query",
+              "dynamodb:PutItem",
+              "dynamodb:UpdateItem",
+            ]),
             Effect: "Allow",
             Resource: Match.objectLike({
               "Fn::ImportValue": Match.stringLikeRegexp("LocationsTable"),
@@ -527,6 +532,28 @@ describe("ApiStack", () => {
         ]),
       },
     });
+  });
+
+  test("provides authenticated CRUD methods for organization locations", () => {
+    const methods = Object.values(
+      template.findResources("AWS::ApiGateway::Method"),
+    ).filter((method) => {
+      const properties = method.Properties as {
+        HttpMethod?: string;
+        ResourceId?: unknown;
+      };
+      return ["GET", "POST", "PATCH", "DELETE"].includes(
+        properties.HttpMethod ?? "",
+      );
+    });
+
+    expect(
+      methods.filter(
+        (method) =>
+          (method.Properties as { AuthorizationType?: string })
+            .AuthorizationType === "COGNITO_USER_POOLS",
+      ).length,
+    ).toBeGreaterThanOrEqual(17);
   });
 
   test("gives the invite Lambda scoped Cognito and table permissions", () => {

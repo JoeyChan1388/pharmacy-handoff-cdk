@@ -1,9 +1,10 @@
 import {
   GetCommand,
   PutCommand,
+  UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { randomUUID } from "node:crypto";
-import { dynamodb } from "../shared/dynamodb";
+import { dynamodb, queryAll } from "../shared/dynamodb";
 import { parseJsonBody } from "../shared/validation";
 import { getCallerUserId } from "../shared/authorization";
 import { jsonResponse as response } from "../shared/http";
@@ -64,6 +65,7 @@ export const handler = async (
   const membershipsTable = process.env.ORGANIZATION_MEMBERSHIPS_TABLE_NAME;
   const organizationsTable = process.env.ORGANIZATIONS_TABLE_NAME;
   const locationsTable = process.env.LOCATIONS_TABLE_NAME;
+  const locationId = event.pathParameters?.locationId;
   if (!membershipsTable || !organizationsTable || !locationsTable) {
     throw new Error("Create location Lambda is missing table configuration");
   }
@@ -98,6 +100,154 @@ export const handler = async (
     return response(event, 409, { message: "Organization is inactive" });
   }
 
+  if (event.httpMethod === "GET") {
+    if (locationId) {
+      const result = await dynamodb.send(
+        new GetCommand({
+          TableName: locationsTable,
+          Key: { organizationId, locationId },
+          ConsistentRead: true,
+        }),
+      );
+      if (!result.Item) {
+        return response(event, 404, { message: "Location not found" });
+      }
+      return response(event, 200, { location: result.Item });
+    }
+
+    const locations = await queryAll<Record<string, unknown>>({
+      TableName: locationsTable,
+      KeyConditionExpression: "organizationId = :organizationId",
+      ExpressionAttributeValues: { ":organizationId": organizationId },
+    });
+    return response(event, 200, { locations });
+  }
+
+  if (event.httpMethod === "DELETE") {
+    if (!locationId) {
+      return response(event, 400, { message: "locationId is required" });
+    }
+    let result;
+    try {
+      result = await dynamodb.send(
+        new UpdateCommand({
+          TableName: locationsTable,
+          Key: { organizationId, locationId },
+          UpdateExpression: "SET #status = :status, #updatedAt = :updatedAt",
+          ExpressionAttributeNames: {
+            "#status": "status",
+            "#updatedAt": "updatedAt",
+          },
+          ExpressionAttributeValues: {
+            ":status": "INACTIVE",
+            ":updatedAt": new Date().toISOString(),
+          },
+          ConditionExpression: "attribute_exists(locationId)",
+          ReturnValues: "ALL_NEW",
+        }),
+      );
+    } catch (error) {
+      if ((error as { name?: string }).name === "ConditionalCheckFailedException") {
+        return response(event, 404, { message: "Location not found" });
+      }
+      throw error;
+    }
+    return response(event, 200, { location: result.Attributes });
+  }
+
+  if (event.httpMethod === "PATCH") {
+    if (!locationId) {
+      return response(event, 400, { message: "locationId is required" });
+    }
+    const body = parseJsonBody<Partial<CreateOrganizationLocationRequest> & {
+      status?: unknown;
+    }>(event);
+    if (!body) {
+      return response(event, 400, { message: "Request body must be valid JSON" });
+    }
+
+    const allowedFields = [
+      "name",
+      "addressLine1",
+      "addressLine2",
+      "city",
+      "province",
+      "postalCode",
+      "phone",
+    ] as const;
+    const updates: Record<string, string> = {};
+    try {
+      for (const field of allowedFields) {
+        if (body[field] !== undefined) {
+          const maxLength =
+            field === "name" ? 120 :
+            field === "city" || field === "province" ? 100 :
+            field === "postalCode" ? 20 :
+            field === "phone" ? 32 : 160;
+          const value = optionalText(body[field], field, maxLength);
+          if (!value) {
+            return response(event, 400, {
+              message: `${field} cannot be empty; omit it to leave it unchanged`,
+            });
+          }
+          updates[field] = value;
+        }
+      }
+    } catch (error) {
+      return response(event, 400, { message: (error as Error).message });
+    }
+
+    if (body.status !== undefined) {
+      if (body.status !== "ACTIVE" && body.status !== "INACTIVE") {
+        return response(event, 400, {
+          message: "status must be ACTIVE or INACTIVE",
+        });
+      }
+      updates.status = body.status;
+    }
+    if (Object.keys(updates).length === 0) {
+      return response(event, 400, {
+        message: "At least one location field or status is required",
+      });
+    }
+
+    const expressionNames: Record<string, string> = { "#updatedAt": "updatedAt" };
+    const expressionValues: Record<string, string> = {
+      ":updatedAt": new Date().toISOString(),
+    };
+    const expressions = ["#updatedAt = :updatedAt"];
+    for (const [field, value] of Object.entries(updates)) {
+      expressionNames[`#${field}`] = field;
+      expressionValues[`:${field}`] = value;
+      expressions.push(`#${field} = :${field}`);
+    }
+
+    let result;
+    try {
+      result = await dynamodb.send(
+        new UpdateCommand({
+          TableName: locationsTable,
+          Key: { organizationId, locationId },
+          UpdateExpression: `SET ${expressions.join(", ")}`,
+          ExpressionAttributeNames: expressionNames,
+          ExpressionAttributeValues: expressionValues,
+          ConditionExpression: "attribute_exists(locationId)",
+          ReturnValues: "ALL_NEW",
+        }),
+      );
+    } catch (error) {
+      if ((error as { name?: string }).name === "ConditionalCheckFailedException") {
+        return response(event, 404, { message: "Location not found" });
+      }
+      throw error;
+    }
+    return response(event, 200, { location: result.Attributes });
+  }
+
+  if (event.httpMethod !== "POST") {
+    return response(event, 405, { message: "Method not allowed" });
+  }
+
   const body = parseJsonBody<CreateOrganizationLocationRequest>(event);
   if (!body) {
     return response(event, 400, { message: "Request body must be valid JSON" });
@@ -130,16 +280,17 @@ export const handler = async (
     });
   }
 
-  const locationId = randomUUID();
+  const newLocationId = randomUUID();
   const now = new Date().toISOString();
   const location = {
     organizationId,
-    locationId,
+    locationId: newLocationId,
     name,
     ...(addressLine1 ? { addressLine1 } : {}),
     ...(addressLine2 ? { addressLine2 } : {}),
     city,
     province,
+    status: "ACTIVE",
     ...(postalCode ? { postalCode } : {}),
     ...(phone ? { phone } : {}),
     createdAt: now,

@@ -7,18 +7,31 @@ jest.mock("../lambda/shared/dynamodb", () => ({
 }));
 
 import { dynamodb, queryAll } from "../lambda/shared/dynamodb";
-import { handler } from "../lambda/organizations/getOrganizationDetailsResolver";
+import { handler } from "../lambda/organizations/manageOrganizationDetailsResolver";
 
 const sendMock = dynamodb.send as unknown as jest.Mock<any>;
 const queryAllMock = queryAll as unknown as jest.Mock<any>;
 
-function makeEvent(): APIGatewayProxyEvent {
+function makeEvent(
+  overrides: Partial<APIGatewayProxyEvent> = {},
+): APIGatewayProxyEvent {
   return {
     httpMethod: "GET",
     headers: {},
     pathParameters: { organizationId: "org-1" },
     requestContext: { authorizer: { claims: { sub: "staff-1" } } },
+    ...overrides,
   } as unknown as APIGatewayProxyEvent;
+}
+
+function mockMembershipAndOrganization(role: "ADMIN" | "STAFF") {
+  sendMock
+    .mockImplementationOnce(async () => ({
+      Item: { role, status: "ACTIVE", email: "user@example.com" },
+    }))
+    .mockImplementationOnce(async () => ({
+      Item: { organizationId: "org-1", name: "Example Org", status: "ACTIVE" },
+    }));
 }
 
 describe("GET organization details", () => {
@@ -95,5 +108,91 @@ describe("GET organization details", () => {
     );
     expect(sendMock).toHaveBeenCalledTimes(1);
     expect(queryAllMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("PATCH organization details", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.ORGANIZATIONS_TABLE_NAME = "organizations";
+    process.env.ORGANIZATION_MEMBERSHIPS_TABLE_NAME = "memberships";
+    process.env.USERS_TABLE_NAME = "users";
+    process.env.LOCATIONS_TABLE_NAME = "locations";
+    process.env.STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME = "assignments";
+  });
+
+  test("lets an organization admin rename the organization", async () => {
+    mockMembershipAndOrganization("ADMIN");
+    sendMock.mockImplementationOnce(async (command: { input: Record<string, unknown> }) => ({
+      Attributes: {
+        organizationId: "org-1",
+        name: (command.input.ExpressionAttributeValues as Record<string, string>)[":name"],
+        status: "ACTIVE",
+      },
+    }));
+
+    const result = await handler(
+      makeEvent({ httpMethod: "PATCH", body: JSON.stringify({ name: "  New Name " }) }),
+    );
+    const body = JSON.parse(result.body ?? "{}");
+
+    expect(result.statusCode).toBe(200);
+    expect(body.organization.name).toBe("New Name");
+    const updateInput = (sendMock.mock.calls[2][0] as { input: Record<string, unknown> }).input;
+    expect(updateInput.TableName).toBe("organizations");
+    expect(updateInput.UpdateExpression).toBe("SET #updatedAt = :updatedAt, #name = :name");
+    expect(queryAllMock).not.toHaveBeenCalled();
+  });
+
+  test("lets an organization admin soft-delete the organization", async () => {
+    mockMembershipAndOrganization("ADMIN");
+    sendMock.mockImplementationOnce(async () => ({
+      Attributes: { organizationId: "org-1", name: "Example Org", status: "INACTIVE" },
+    }));
+
+    const result = await handler(makeEvent({ httpMethod: "DELETE" }));
+    const body = JSON.parse(result.body ?? "{}");
+
+    expect(result.statusCode).toBe(200);
+    expect(body.organization.status).toBe("INACTIVE");
+    const updateInput = (sendMock.mock.calls[2][0] as { input: Record<string, unknown> }).input;
+    expect(updateInput.UpdateExpression).toBe("SET #updatedAt = :updatedAt, #status = :status");
+    expect(
+      (updateInput.ExpressionAttributeValues as Record<string, string>)[":status"],
+    ).toBe("INACTIVE");
+  });
+
+  test("rejects a regular staff member deleting the organization", async () => {
+    mockMembershipAndOrganization("STAFF");
+
+    const result = await handler(makeEvent({ httpMethod: "DELETE" }));
+
+    expect(result.statusCode).toBe(403);
+    expect(sendMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("rejects a regular staff member", async () => {
+    mockMembershipAndOrganization("STAFF");
+
+    const result = await handler(
+      makeEvent({ httpMethod: "PATCH", body: JSON.stringify({ name: "New Name" }) }),
+    );
+
+    expect(result.statusCode).toBe(403);
+    expect(JSON.parse(result.body ?? "{}").message).toBe(
+      "Organization admin access required",
+    );
+    expect(sendMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("rejects an invalid name", async () => {
+    mockMembershipAndOrganization("ADMIN");
+
+    const result = await handler(
+      makeEvent({ httpMethod: "PATCH", body: JSON.stringify({ name: "" }) }),
+    );
+
+    expect(result.statusCode).toBe(400);
+    expect(sendMock).toHaveBeenCalledTimes(2);
   });
 });

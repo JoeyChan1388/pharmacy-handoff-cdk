@@ -111,8 +111,9 @@ export const handler = async (
                     return result.Item as OrganizationLocation | undefined;
                   }),
               ).then((items) =>
-                items.filter((item): item is OrganizationLocation =>
-                  Boolean(item),
+                items.filter(
+                  (item): item is OrganizationLocation =>
+                    item !== undefined && item.status !== "INACTIVE",
                 ),
               );
 

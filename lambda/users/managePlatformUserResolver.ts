@@ -9,7 +9,7 @@ import {
   type UserType,
 } from "@aws-sdk/client-cognito-identity-provider";
 
-import { dynamodb } from "../shared/dynamodb";
+import { dynamodb, scanAll } from "../shared/dynamodb";
 import { jsonResponse as response } from "../shared/http";
 import { authorizePlatformAdmin } from "../shared/authorization";
 import { normalizeEmail, parseJsonBody } from "../shared/validation";
@@ -182,7 +182,13 @@ export const handler = async (
   }
 
   const userId = event.pathParameters?.userId;
-  if (!userId) return response(event, 400, { message: "userId is required" });
+  if (!userId) {
+    if (event.httpMethod !== "GET") {
+      return response(event, 405, { message: "Method not allowed" });
+    }
+    const users = await scanAll<Record<string, unknown>>(tableName);
+    return response(event, 200, { users });
+  }
 
   const profileResult = await dynamodb.send(
     new GetCommand({

@@ -232,18 +232,20 @@ export class ApiStack extends cdk.Stack {
     props.staffLocationAssignmentsTable.grantReadData(getStaffOrganizations);
 
     /**
-     * GetOrganizationDetails Lambda Function
+     * ManageOrganizationDetails Lambda Function
      *
-     * This Lambda function is responsible for retrieving the details of a specific organization.
+     * Single Lambda for the organization details resource. Active members can
+     * retrieve details scoped to their role; organization admins can also
+     * update the organization name.
      */
-    const getOrganizationDetails = new NodejsFunction(
+    const manageOrganizationDetails = new NodejsFunction(
       this,
-      "GetOrganizationDetailsResolver",
+      "ManageOrganizationDetailsResolver",
       {
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(
           __dirname,
-          "../lambda/organizations/getOrganizationDetailsResolver.ts",
+          "../lambda/organizations/manageOrganizationDetailsResolver.ts",
         ),
         handler: "handler",
         environment: {
@@ -260,106 +262,20 @@ export class ApiStack extends cdk.Stack {
     );
 
     /**
-     * Grant Table Read Permissions to GetOrganizationDetails Lambda Function
+     * Grant Table Permissions to ManageOrganizationDetails Lambda Function
      */
-    props.organizationsTable.grantReadData(getOrganizationDetails);
-    props.organizationMembershipsTable.grantReadData(getOrganizationDetails);
-    props.usersTable.grantReadData(getOrganizationDetails);
-    props.locationsTable.grantReadData(getOrganizationDetails);
-    props.staffLocationAssignmentsTable.grantReadData(getOrganizationDetails);
-
-    /**
-     * CreateOrganization Lambda Function
-     *
-     * This Lambda function is responsible for creating a new organization.
-     * It requires the user to be a platform admin, and it creates a new
-     * organization in the DynamoDB organizations table, as well as a new
-     * user profile for the organization admin in the users table.
-     */
-    const createOrganization = new NodejsFunction(
-      this,
-      "CreateOrganizationResolver",
-      {
-        runtime: lambda.Runtime.NODEJS_24_X,
-        entry: join(
-          __dirname,
-          "../lambda/organizations/createOrganizationResolver.ts",
-        ),
-        handler: "handler",
-        environment: {
-          STAFF_USER_POOL_ID: props.staffUserPool.userPoolId,
-          PLATFORM_ADMIN_USER_IDS: props.platformAdminUserIds.join(","),
-          USERS_TABLE_NAME: props.usersTable.tableName,
-          ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
-          ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
-            props.organizationMembershipsTable.tableName,
-          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
-        },
-      },
-    );
-
-    /**
-     * ListPlatformUsers Lambda Function
-     *
-     * This Lambda function is responsible for listing all platform users.
-     * It requires the user to be a platform admin, and it retrieves all
-     * users from the DynamoDB users table.
-     */
-    const listPlatformUsers = new NodejsFunction(
-      this,
-      "ListPlatformUsersResolver",
-      {
-        runtime: lambda.Runtime.NODEJS_24_X,
-        entry: join(__dirname, "../lambda/users/listPlatformUsersResolver.ts"),
-        handler: "handler",
-        environment: {
-          USERS_TABLE_NAME: props.usersTable.tableName,
-          PLATFORM_ADMIN_USER_IDS: props.platformAdminUserIds.join(","),
-          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
-        },
-      },
-    );
-
-    /**
-     * Grant Table Read Permissions to ListPlatformUsers Lambda Function
-     */
-    props.usersTable.grantReadData(listPlatformUsers);
-
-    /**
-     * ListPlatformOrganizations Lambda Function
-     *
-     * This method is protected by the staff Cognito authorizer and will return
-     * a list of all platform organizations.
-     */
-    const listPlatformOrganizations = new NodejsFunction(
-      this,
-      "ListPlatformOrganizationsResolver",
-      {
-        runtime: lambda.Runtime.NODEJS_24_X,
-        entry: join(
-          __dirname,
-          "../lambda/organizations/listPlatformOrganizationsResolver.ts",
-        ),
-        handler: "handler",
-        environment: {
-          ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
-          PLATFORM_ADMIN_USER_IDS: props.platformAdminUserIds.join(","),
-          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
-        },
-      },
-    );
-
-    /**
-     * Grant Table Read Permissions to ListPlatformOrganizations Lambda Function
-     */
-    props.organizationsTable.grantReadData(listPlatformOrganizations);
+    props.organizationsTable.grantReadWriteData(manageOrganizationDetails);
+    props.organizationMembershipsTable.grantReadData(manageOrganizationDetails);
+    props.usersTable.grantReadData(manageOrganizationDetails);
+    props.locationsTable.grantReadData(manageOrganizationDetails);
+    props.staffLocationAssignmentsTable.grantReadData(manageOrganizationDetails);
 
     /**
      * ManagePlatformUser Lambda Function
      *
-     * This Lambda function is responsible for managing platform users. It
-     * allows platform admins to create, update, retrieve, and delete users
-     * in the appropriate Cognito user pool and the users table.
+     * Single Lambda for all platform-admin user CRUD operations. It lists,
+     * creates, retrieves, updates, and deletes users in the appropriate
+     * Cognito user pool and the users table.
      */
     const managePlatformUser = new NodejsFunction(
       this,
@@ -406,9 +322,11 @@ export class ApiStack extends cdk.Stack {
     /**
      * ManagePlatformOrganization Lambda Function
      *
-     * This Lambda function is responsible for managing platform organizations. It
-     * allows platform admins to create, update, retrieve, and delete organizations
-     * in the organizations table.
+     * Single Lambda for all platform-admin organization CRUD operations. It
+     * lists, creates, retrieves, updates, and soft-deletes organizations in
+     * the organizations table. Creating an organization also provisions the
+     * initial admin in the staff Cognito user pool and writes the user
+     * profile and ADMIN membership in one transaction.
      */
     const managePlatformOrganization = new NodejsFunction(
       this,
@@ -420,25 +338,31 @@ export class ApiStack extends cdk.Stack {
           "../lambda/organizations/managePlatformOrganizationResolver.ts",
         ),
         handler: "handler",
+        description:
+          "Lambda function to manage platform organizations",
         environment: {
-          ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
+          STAFF_USER_POOL_ID: props.staffUserPool.userPoolId,
           PLATFORM_ADMIN_USER_IDS: props.platformAdminUserIds.join(","),
+          USERS_TABLE_NAME: props.usersTable.tableName,
+          ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
+          ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
+            props.organizationMembershipsTable.tableName,
           ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
         },
       },
     );
-    props.organizationsTable.grantReadWriteData(managePlatformOrganization);
 
     /**
-     * IAM Policies for CreateOrganization Lambda Function
+     * IAM Policies for ManagePlatformOrganization Lambda Function
      */
-    createOrganization.addToRolePolicy(
+    props.organizationsTable.grantReadWriteData(managePlatformOrganization);
+    managePlatformOrganization.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["cognito-idp:AdminCreateUser", "cognito-idp:AdminDeleteUser"],
         resources: [props.staffUserPool.userPoolArn],
       }),
     );
-    createOrganization.addToRolePolicy(
+    managePlatformOrganization.addToRolePolicy(
       new iam.PolicyStatement({
         actions: [
           "dynamodb:TransactWriteItems",
@@ -454,24 +378,24 @@ export class ApiStack extends cdk.Stack {
     );
 
     /**
-     * CreateOrganizationLocation Lambda Function
+     * ManageOrganizationLocations Lambda Function
      *
-     * This Lambda function is responsible for creating a new location for an
-     * organization. It requires the user to be a platform admin or an admin of
-     * the organization, and it creates a new location in the locations table.
+     * This Lambda function is responsible for managing organization locations. It
+     * allows platform admins to create, update, retrieve, and delete locations
+     * associated with organizations.
      */
-    const createOrganizationLocation = new NodejsFunction(
+    const manageOrganizationLocations = new NodejsFunction(
       this,
-      "CreateOrganizationLocationResolver",
+      "manageOrganizationLocationsResolver",
       {
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(
           __dirname,
-          "../lambda/organizations/createOrganizationLocationResolver.ts",
+          "../lambda/organizations/manageOrganizationLocationsResolver.ts",
         ),
         handler: "handler",
         description:
-          "Lambda function to create a new location for an organization",
+          "Lambda function to manage organization locations",
         environment: {
           ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
           ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
@@ -483,9 +407,9 @@ export class ApiStack extends cdk.Stack {
     );
 
     /**
-     * IAM Policies for CreateOrganizationLocation Lambda Function
+     * IAM Policies for ManageOrganizationLocation Lambda Function
      */
-    createOrganizationLocation.addToRolePolicy(
+    manageOrganizationLocations.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["dynamodb:GetItem"],
         resources: [
@@ -494,9 +418,14 @@ export class ApiStack extends cdk.Stack {
         ],
       }),
     );
-    createOrganizationLocation.addToRolePolicy(
+    manageOrganizationLocations.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ["dynamodb:PutItem"],
+        actions: [
+          "dynamodb:GetItem",
+          "dynamodb:Query",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+        ],
         resources: [props.locationsTable.tableArn],
       }),
     );
@@ -529,6 +458,7 @@ export class ApiStack extends cdk.Stack {
      */
     const organizationStaff = organizationResource.addResource("staff");
     const organizationLocations = organizationResource.addResource("locations");
+    const organizationLocation = organizationLocations.addResource("{locationId}");
     const organizationDetails = organizationResource.addResource("details");
 
     /**
@@ -583,7 +513,38 @@ export class ApiStack extends cdk.Stack {
      */
     organizationDetails.addMethod(
       "GET",
-      new apigateway.LambdaIntegration(getOrganizationDetails),
+      new apigateway.LambdaIntegration(manageOrganizationDetails),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+
+    /**
+     * PATCH /organizations/{organizationId}/details Method
+     *
+     * This method is protected by the staff Cognito authorizer and will allow
+     * organization admins to update their organization's details.
+     */
+    organizationDetails.addMethod(
+      "PATCH",
+      new apigateway.LambdaIntegration(manageOrganizationDetails),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+
+    /**
+     * DELETE /organizations/{organizationId}/details Method
+     *
+     * This method is protected by the staff Cognito authorizer and will allow
+     * organization admins to soft-delete their organization by marking it
+     * INACTIVE.
+     */
+    organizationDetails.addMethod(
+      "DELETE",
+      new apigateway.LambdaIntegration(manageOrganizationDetails),
       {
         authorizationType: apigateway.AuthorizationType.COGNITO,
         authorizer: staffAuthorizer,
@@ -599,7 +560,7 @@ export class ApiStack extends cdk.Stack {
      */
     platformOrganizations.addMethod(
       "POST",
-      new apigateway.LambdaIntegration(createOrganization),
+      new apigateway.LambdaIntegration(managePlatformOrganization),
       {
         authorizationType: apigateway.AuthorizationType.COGNITO,
         authorizer: staffAuthorizer,
@@ -614,7 +575,7 @@ export class ApiStack extends cdk.Stack {
      */
     platformOrganizations.addMethod(
       "GET",
-      new apigateway.LambdaIntegration(listPlatformOrganizations),
+      new apigateway.LambdaIntegration(managePlatformOrganization),
       {
         authorizationType: apigateway.AuthorizationType.COGNITO,
         authorizer: staffAuthorizer,
@@ -629,7 +590,7 @@ export class ApiStack extends cdk.Stack {
      */
     platformUsers.addMethod(
       "GET",
-      new apigateway.LambdaIntegration(listPlatformUsers),
+      new apigateway.LambdaIntegration(managePlatformUser),
       {
         authorizationType: apigateway.AuthorizationType.COGNITO,
         authorizer: staffAuthorizer,
@@ -752,15 +713,46 @@ export class ApiStack extends cdk.Stack {
     );
 
     /**
-     * POST /organizations/{organizationId}/locations Method
+     * Organization location CRUD methods
      *
-     * This method is protected by the staff Cognito authorizer and will allow
-     * staff members to create new locations within an organization. The Lambda
-     * function will handle the creation of the location.
+     * These methods use the staff Cognito authorizer; the resolver requires an
+     * active ADMIN membership in the organization.
      */
     organizationLocations.addMethod(
       "POST",
-      new apigateway.LambdaIntegration(createOrganizationLocation),
+      new apigateway.LambdaIntegration(manageOrganizationLocations),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+    organizationLocations.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(manageOrganizationLocations),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+    organizationLocation.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(manageOrganizationLocations),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+    organizationLocation.addMethod(
+      "PATCH",
+      new apigateway.LambdaIntegration(manageOrganizationLocations),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+    organizationLocation.addMethod(
+      "DELETE",
+      new apigateway.LambdaIntegration(manageOrganizationLocations),
       {
         authorizationType: apigateway.AuthorizationType.COGNITO,
         authorizer: staffAuthorizer,
