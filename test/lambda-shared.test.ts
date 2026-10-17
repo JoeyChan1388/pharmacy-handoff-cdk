@@ -1,6 +1,6 @@
-import type { APIGatewayProxyEvent } from "aws-lambda";
-
 import { normalizeEmail, parseJsonBody } from "../lambda/shared/validation";
+
+import type { APIGatewayProxyEvent } from "aws-lambda";
 
 function eventWithBody(body: string): APIGatewayProxyEvent {
   return { body } as APIGatewayProxyEvent;

@@ -1,3 +1,8 @@
+import { randomUUID } from "node:crypto";
+import { dynamodb, scanAll } from "../shared/dynamodb";
+import { jsonResponse as response } from "../shared/http";
+import { authorizePlatformAdmin } from "../shared/authorization";
+import { normalizeEmail, parseJsonBody } from "../shared/validation";
 import {
   GetCommand,
   TransactWriteCommand,
@@ -8,26 +13,26 @@ import {
   AdminDeleteUserCommand,
   CognitoIdentityProviderClient,
 } from "@aws-sdk/client-cognito-identity-provider";
-import { randomUUID } from "node:crypto";
-import { dynamodb, scanAll } from "../shared/dynamodb";
-import { jsonResponse as response } from "../shared/http";
-import { authorizePlatformAdmin } from "../shared/authorization";
-import { normalizeEmail, parseJsonBody } from "../shared/validation";
 
+import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import type {
   CognitoUserAttribute,
   CreateOrganizationRequest,
 } from "../shared/types";
-import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 const region = process.env.AWS_REGION;
 const cognito = new CognitoIdentityProviderClient({ region });
 
+/**
+ * Config
+ *
+ * Table names and user pool ID the resolver reads from the environment.
+ */
 interface Config {
-  staffUserPoolId: string;
   usersTableName: string;
-  organizationsTableName: string;
+  staffUserPoolId: string;
   membershipsTableName: string;
+  organizationsTableName: string;
 }
 
 /**
@@ -214,7 +219,9 @@ async function applyUpdates(
       }),
     );
   } catch (error) {
-    if ((error as { name?: string }).name === "ConditionalCheckFailedException") {
+    if (
+      (error as { name?: string }).name === "ConditionalCheckFailedException"
+    ) {
       return response(event, 404, { message: "Organization not found" });
     }
     throw error;

@@ -9,15 +9,20 @@ import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 
+/**
+ * ApiStackProps
+ *
+ * Tables, user pools, and configuration the API stack wires into its Lambdas.
+ */
 interface ApiStackProps extends cdk.StackProps {
   usersTable: dynamodb.ITable;
+  platformAdminUserIds: string[];
   locationsTable: dynamodb.ITable;
   staffUserPool: cognito.IUserPool;
   patientUserPool: cognito.IUserPool;
   organizationsTable: dynamodb.ITable;
   organizationMembershipsTable: dynamodb.ITable;
   staffLocationAssignmentsTable: dynamodb.ITable;
-  platformAdminUserIds: string[];
 }
 
 /**
@@ -268,7 +273,9 @@ export class ApiStack extends cdk.Stack {
     props.organizationMembershipsTable.grantReadData(manageOrganizationDetails);
     props.usersTable.grantReadData(manageOrganizationDetails);
     props.locationsTable.grantReadData(manageOrganizationDetails);
-    props.staffLocationAssignmentsTable.grantReadData(manageOrganizationDetails);
+    props.staffLocationAssignmentsTable.grantReadData(
+      manageOrganizationDetails,
+    );
 
     /**
      * ManagePlatformUser Lambda Function
@@ -338,8 +345,7 @@ export class ApiStack extends cdk.Stack {
           "../lambda/organizations/managePlatformOrganizationResolver.ts",
         ),
         handler: "handler",
-        description:
-          "Lambda function to manage platform organizations",
+        description: "Lambda function to manage platform organizations",
         environment: {
           STAFF_USER_POOL_ID: props.staffUserPool.userPoolId,
           PLATFORM_ADMIN_USER_IDS: props.platformAdminUserIds.join(","),
@@ -394,8 +400,7 @@ export class ApiStack extends cdk.Stack {
           "../lambda/organizations/manageOrganizationLocationsResolver.ts",
         ),
         handler: "handler",
-        description:
-          "Lambda function to manage organization locations",
+        description: "Lambda function to manage organization locations",
         environment: {
           ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
           ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
@@ -458,7 +463,8 @@ export class ApiStack extends cdk.Stack {
      */
     const organizationStaff = organizationResource.addResource("staff");
     const organizationLocations = organizationResource.addResource("locations");
-    const organizationLocation = organizationLocations.addResource("{locationId}");
+    const organizationLocation =
+      organizationLocations.addResource("{locationId}");
     const organizationDetails = organizationResource.addResource("details");
 
     /**

@@ -30,8 +30,8 @@ export interface InviteOrganizationStaffRequest {
  * the email of the initial admin user.
  */
 export interface CreateOrganizationRequest {
-  organizationName?: unknown;
   adminEmail?: unknown;
+  organizationName?: unknown;
 }
 
 /**
@@ -43,12 +43,12 @@ export interface CreateOrganizationRequest {
  */
 export interface CreateOrganizationLocationRequest {
   name?: unknown;
-  addressLine1?: unknown;
-  addressLine2?: unknown;
   city?: unknown;
+  phone?: unknown;
   province?: unknown;
   postalCode?: unknown;
-  phone?: unknown;
+  addressLine1?: unknown;
+  addressLine2?: unknown;
 }
 
 /**
@@ -69,11 +69,11 @@ export interface CognitoUserAttribute {
  * status.
  */
 export interface StaffOrganizationLocation {
-  locationId: string;
   name?: string;
   city?: string;
-  province?: string;
   status?: string;
+  province?: string;
+  locationId: string;
 }
 
 /**
@@ -84,8 +84,8 @@ export interface StaffOrganizationLocation {
  * array of locations.
  */
 export interface StaffOrganizationSummary {
-  organizationId: string;
   name?: string;
+  organizationId: string;
   role: "ADMIN" | "STAFF";
   locations: StaffOrganizationLocation[];
 }
@@ -97,11 +97,11 @@ export interface StaffOrganizationSummary {
  * includes the organization ID, user ID, role, and status.
  */
 export interface OrganizationMembership {
-  organizationId: string;
   userId: string;
   email?: string;
-  role: "ADMIN" | "STAFF";
   status?: string;
+  organizationId: string;
+  role: "ADMIN" | "STAFF";
 }
 
 /**
@@ -112,11 +112,16 @@ export interface OrganizationMembership {
  * ID, and status.
  */
 export interface StaffLocationAssignment {
-  organizationId: string;
-  locationId: string;
   status?: string;
+  locationId: string;
+  organizationId: string;
 }
 
+/**
+ * OrganizationLocation
+ *
+ * A location record as stored in the locations table, keyed by organization.
+ */
 export interface OrganizationLocation extends StaffOrganizationLocation {
   organizationId: string;
 }

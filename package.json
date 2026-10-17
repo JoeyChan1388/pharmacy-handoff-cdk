@@ -10,7 +10,11 @@
     "test": "jest",
     "test:profile-flow": "node --env-file=.env scripts/test-cognito-profile-flow.mjs",
     "seed:organization": "node --env-file=.env scripts/seed-organization.mjs",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write bin lib lambda test scripts",
+    "format:check": "prettier --check bin lib lambda test scripts"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.164",
@@ -18,10 +22,15 @@
     "@types/node": "^24.10.1",
     "aws-cdk": "2.1119.0",
     "esbuild": "^0.28.2",
+    "eslint": "^10.13.0",
+    "eslint-plugin-jsdoc": "^63.3.3",
+    "eslint-plugin-perfectionist": "^5.12.1",
     "jest": "^30",
+    "prettier": "^3.9.10",
     "ts-jest": "^29",
     "ts-node": "^10.9.2",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.71.2"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1148.0",

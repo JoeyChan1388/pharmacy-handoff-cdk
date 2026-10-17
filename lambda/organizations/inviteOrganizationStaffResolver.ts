@@ -1,19 +1,19 @@
-import {
-  CognitoIdentityProviderClient,
-  AdminCreateUserCommand,
-  AdminGetUserCommand,
-} from "@aws-sdk/client-cognito-identity-provider";
 import { jsonResponse } from "../shared/http";
 import { dynamodb } from "../shared/dynamodb";
 import { getCallerUserId } from "../shared/authorization";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { normalizeEmail, parseJsonBody } from "../shared/validation";
+import {
+  AdminCreateUserCommand,
+  AdminGetUserCommand,
+  CognitoIdentityProviderClient,
+} from "@aws-sdk/client-cognito-identity-provider";
 
+import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import type {
   CognitoUserAttribute,
   InviteOrganizationStaffRequest,
 } from "../shared/types";
-import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 const region = process.env.AWS_REGION;
 const cognito = new CognitoIdentityProviderClient({ region });
@@ -200,7 +200,7 @@ export const handler = async (
 
   /**
    * Check if the user is already an organization admin
-   * 
+   *
    * If the user is already an admin, return a 409 Conflict response.
    */
   const existingMembership = await dynamodb.send(

@@ -8,6 +8,11 @@ import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as cognitoIdentityPool from "aws-cdk-lib/aws-cognito-identitypool";
 
+/**
+ * AuthStackProps
+ *
+ * Tables the auth stack needs to wire its post-confirmation trigger.
+ */
 interface AuthStackProps extends cdk.StackProps {
   usersTable: dynamodb.ITable;
 }

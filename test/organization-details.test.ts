@@ -1,4 +1,5 @@
 import { jest } from "@jest/globals";
+
 import type { APIGatewayProxyEvent } from "aws-lambda";
 
 jest.mock("../lambda/shared/dynamodb", () => ({
@@ -45,33 +46,59 @@ describe("GET organization details", () => {
   });
 
   test("allows active staff and limits their response to their assignments", async () => {
-    sendMock.mockImplementation(async (command: { input: { TableName: string; Key?: Record<string, string> } }) => {
-      switch (command.input.TableName) {
-        case "memberships":
-          return { Item: { role: "STAFF", status: "ACTIVE", email: "staff@example.com" } };
-        case "organizations":
-          return { Item: { organizationId: "org-1", name: "Example Org", status: "ACTIVE" } };
-        case "users":
-          return { Item: { userId: "staff-1", email: "staff@example.com", status: "ACTIVE" } };
-        case "locations":
-          return {
-            Item: {
-              organizationId: "org-1",
-              locationId: command.input.Key?.locationId,
-              name: "Assigned Location",
-            },
-          };
-        default:
-          throw new Error(`Unexpected table: ${command.input.TableName}`);
-      }
-    });
+    sendMock.mockImplementation(
+      async (command: {
+        input: { TableName: string; Key?: Record<string, string> };
+      }) => {
+        switch (command.input.TableName) {
+          case "memberships":
+            return {
+              Item: {
+                role: "STAFF",
+                status: "ACTIVE",
+                email: "staff@example.com",
+              },
+            };
+          case "organizations":
+            return {
+              Item: {
+                organizationId: "org-1",
+                name: "Example Org",
+                status: "ACTIVE",
+              },
+            };
+          case "users":
+            return {
+              Item: {
+                userId: "staff-1",
+                email: "staff@example.com",
+                status: "ACTIVE",
+              },
+            };
+          case "locations":
+            return {
+              Item: {
+                organizationId: "org-1",
+                locationId: command.input.Key?.locationId,
+                name: "Assigned Location",
+              },
+            };
+          default:
+            throw new Error(`Unexpected table: ${command.input.TableName}`);
+        }
+      },
+    );
     queryAllMock.mockImplementation(async (input: { TableName: string }) => {
       if (input.TableName !== "assignments") {
         throw new Error(`Staff should not read ${input.TableName}`);
       }
       return [
         { organizationId: "org-1", locationId: "location-1", status: "ACTIVE" },
-        { organizationId: "org-1", locationId: "location-2", status: "INACTIVE" },
+        {
+          organizationId: "org-1",
+          locationId: "location-2",
+          status: "INACTIVE",
+        },
         { organizationId: "org-2", locationId: "location-3", status: "ACTIVE" },
       ];
     });
@@ -123,31 +150,46 @@ describe("PATCH organization details", () => {
 
   test("lets an organization admin rename the organization", async () => {
     mockMembershipAndOrganization("ADMIN");
-    sendMock.mockImplementationOnce(async (command: { input: Record<string, unknown> }) => ({
-      Attributes: {
-        organizationId: "org-1",
-        name: (command.input.ExpressionAttributeValues as Record<string, string>)[":name"],
-        status: "ACTIVE",
-      },
-    }));
+    sendMock.mockImplementationOnce(
+      async (command: { input: Record<string, unknown> }) => ({
+        Attributes: {
+          organizationId: "org-1",
+          name: (
+            command.input.ExpressionAttributeValues as Record<string, string>
+          )[":name"],
+          status: "ACTIVE",
+        },
+      }),
+    );
 
     const result = await handler(
-      makeEvent({ httpMethod: "PATCH", body: JSON.stringify({ name: "  New Name " }) }),
+      makeEvent({
+        httpMethod: "PATCH",
+        body: JSON.stringify({ name: "  New Name " }),
+      }),
     );
     const body = JSON.parse(result.body ?? "{}");
 
     expect(result.statusCode).toBe(200);
     expect(body.organization.name).toBe("New Name");
-    const updateInput = (sendMock.mock.calls[2][0] as { input: Record<string, unknown> }).input;
+    const updateInput = (
+      sendMock.mock.calls[2][0] as { input: Record<string, unknown> }
+    ).input;
     expect(updateInput.TableName).toBe("organizations");
-    expect(updateInput.UpdateExpression).toBe("SET #updatedAt = :updatedAt, #name = :name");
+    expect(updateInput.UpdateExpression).toBe(
+      "SET #updatedAt = :updatedAt, #name = :name",
+    );
     expect(queryAllMock).not.toHaveBeenCalled();
   });
 
   test("lets an organization admin soft-delete the organization", async () => {
     mockMembershipAndOrganization("ADMIN");
     sendMock.mockImplementationOnce(async () => ({
-      Attributes: { organizationId: "org-1", name: "Example Org", status: "INACTIVE" },
+      Attributes: {
+        organizationId: "org-1",
+        name: "Example Org",
+        status: "INACTIVE",
+      },
     }));
 
     const result = await handler(makeEvent({ httpMethod: "DELETE" }));
@@ -155,10 +197,16 @@ describe("PATCH organization details", () => {
 
     expect(result.statusCode).toBe(200);
     expect(body.organization.status).toBe("INACTIVE");
-    const updateInput = (sendMock.mock.calls[2][0] as { input: Record<string, unknown> }).input;
-    expect(updateInput.UpdateExpression).toBe("SET #updatedAt = :updatedAt, #status = :status");
+    const updateInput = (
+      sendMock.mock.calls[2][0] as { input: Record<string, unknown> }
+    ).input;
+    expect(updateInput.UpdateExpression).toBe(
+      "SET #updatedAt = :updatedAt, #status = :status",
+    );
     expect(
-      (updateInput.ExpressionAttributeValues as Record<string, string>)[":status"],
+      (updateInput.ExpressionAttributeValues as Record<string, string>)[
+        ":status"
+      ],
     ).toBe("INACTIVE");
   });
 
@@ -175,7 +223,10 @@ describe("PATCH organization details", () => {
     mockMembershipAndOrganization("STAFF");
 
     const result = await handler(
-      makeEvent({ httpMethod: "PATCH", body: JSON.stringify({ name: "New Name" }) }),
+      makeEvent({
+        httpMethod: "PATCH",
+        body: JSON.stringify({ name: "New Name" }),
+      }),
     );
 
     expect(result.statusCode).toBe(403);

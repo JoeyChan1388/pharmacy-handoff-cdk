@@ -1,12 +1,16 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-
 import {
   DynamoDBDocumentClient,
   QueryCommand,
-  ScanCommand,
   type QueryCommandInput,
+  ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 
+/**
+ * DynamoDB Document Client
+ *
+ * Shared client instance reused across Lambda invocations.
+ */
 export const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 /**

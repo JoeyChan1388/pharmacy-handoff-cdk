@@ -15,7 +15,7 @@ export class DataStack extends cdk.Stack {
   public readonly organizationsTable: dynamodb.Table;
   public readonly organizationMembershipsTable: dynamodb.Table;
   public readonly staffLocationAssignmentsTable: dynamodb.Table;
-  
+
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 

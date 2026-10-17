@@ -1,3 +1,8 @@
+import { dynamodb, scanAll } from "../shared/dynamodb";
+import { jsonResponse as response } from "../shared/http";
+import { authorizePlatformAdmin } from "../shared/authorization";
+import { normalizeEmail, parseJsonBody } from "../shared/validation";
+import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import {
   AdminCreateUserCommand,
   AdminDeleteUserCommand,
@@ -9,17 +14,19 @@ import {
   type UserType,
 } from "@aws-sdk/client-cognito-identity-provider";
 
-import { dynamodb, scanAll } from "../shared/dynamodb";
-import { jsonResponse as response } from "../shared/http";
-import { authorizePlatformAdmin } from "../shared/authorization";
-import { normalizeEmail, parseJsonBody } from "../shared/validation";
-import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 type UserPoolType = "STAFF" | "PATIENT";
 
 const cognito = new CognitoIdentityProviderClient({});
 
+/**
+ * Resolves the Cognito user pool ID for the given pool type from the
+ * environment, throwing if it is not configured.
+ *
+ * @param type The user pool type
+ * @returns The user pool ID
+ */
 function poolId(type: UserPoolType): string {
   const id =
     type === "STAFF"
@@ -29,6 +36,15 @@ function poolId(type: UserPoolType): string {
   return id;
 }
 
+/**
+ * Looks up a Cognito user by sub across the staff and patient pools, or only
+ * the preferred pool when known. Throws if the sub exists in more than one
+ * pool.
+ *
+ * @param userId The Cognito sub to search for
+ * @param preferredType Restrict the search to a single pool
+ * @returns The matched user and its pool type, or undefined
+ */
 async function findCognitoUser(
   userId: string,
   preferredType?: UserPoolType,
@@ -55,6 +71,12 @@ async function findCognitoUser(
   return matches[0];
 }
 
+/**
+ * Checks that a value is a non-empty string of at most 100 characters.
+ *
+ * @param value The value to validate
+ * @returns True if the value is a valid name
+ */
 function validName(value: unknown): value is string {
   return (
     typeof value === "string" &&
@@ -63,6 +85,21 @@ function validName(value: unknown): value is string {
   );
 }
 
+/**
+ * ManagePlatformUserResolver Handler
+ *
+ * Single Lambda for all platform-admin user CRUD operations:
+ *
+ * - GET    /platform/users           list users
+ * - POST   /platform/users           create a Cognito account and profile
+ * - GET    /platform/users/{userId}  retrieve one profile
+ * - PATCH  /platform/users/{userId}  update profile and Cognito attributes
+ * - DELETE /platform/users/{userId}  disable the account and profile
+ *
+ * @param event The API Gateway event containing the request details
+ * and authorizer claims.
+ * @returns An APIGatewayProxyResult for the requested operation.
+ */
 export const handler = async (
   event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> => {

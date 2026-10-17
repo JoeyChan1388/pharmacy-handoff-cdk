@@ -1,6 +1,6 @@
+import { dynamodb } from "../shared/dynamodb";
 import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
-import { dynamodb } from "../shared/dynamodb";
 import type { PostConfirmationTriggerEvent } from "aws-lambda";
 
 /**
@@ -25,7 +25,7 @@ const profileCreationSources = new Set([
  * user attributes.
  * @returns The same PostConfirmationTriggerEvent, allowing the flow to
  * continue unimpeded.
- */
+ **/
 export const handler = async (
   event: PostConfirmationTriggerEvent,
 ): Promise<PostConfirmationTriggerEvent> => {

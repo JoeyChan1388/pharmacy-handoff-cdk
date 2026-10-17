@@ -4,26 +4,40 @@ import { dynamodb, queryAll } from "../shared/dynamodb";
 import { getCallerUserId } from "../shared/authorization";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
+import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import type {
-  OrganizationMembership,
   OrganizationLocation,
+  OrganizationMembership,
   StaffLocationAssignment,
 } from "../shared/types";
-import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
+/**
+ * OrganizationUser
+ *
+ * A member of the organization as returned by the details endpoint, combining
+ * the membership record, the user profile, and active location assignments.
+ */
 interface OrganizationUser {
   userId: string;
   email?: string;
+  status?: string;
   givenName?: string;
   familyName?: string;
-  role: OrganizationMembership["role"];
-  status?: string;
   userStatus?: string;
   locationIds: string[];
+  role: OrganizationMembership["role"];
 }
 
+/**
+ * OrganizationLocationDetails
+ *
+ * A location enriched with the members currently assigned to it.
+ */
 interface OrganizationLocationDetails extends OrganizationLocation {
-  assignedUsers: Pick<OrganizationUser, "userId" | "email" | "role" | "status">[];
+  assignedUsers: Pick<
+    OrganizationUser,
+    "userId" | "email" | "role" | "status"
+  >[];
 }
 
 /**
@@ -62,7 +76,9 @@ export const handler = async (
     assignments: process.env.STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME,
   };
   if (Object.values(tableNames).some((tableName) => !tableName)) {
-    throw new Error("Organization details Lambda is missing table configuration");
+    throw new Error(
+      "Organization details Lambda is missing table configuration",
+    );
   }
 
   const callerMembership = await dynamodb.send(

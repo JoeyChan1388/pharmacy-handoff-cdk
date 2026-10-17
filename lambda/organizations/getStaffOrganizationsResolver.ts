@@ -1,17 +1,15 @@
-import {
-  GetCommand,
-} from "@aws-sdk/lib-dynamodb";
+import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { dynamodb, queryAll } from "../shared/dynamodb";
 import { jsonResponse as response } from "../shared/http";
 import { getCallerUserId } from "../shared/authorization";
 
+import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import type {
   OrganizationLocation,
   OrganizationMembership,
   StaffLocationAssignment,
   StaffOrganizationSummary,
 } from "../shared/types";
-import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 /**
  * GetStaffOrganizationsResolver Handler
@@ -47,25 +45,21 @@ export const handler = async (
     );
   }
 
-  const memberships = await queryAll<OrganizationMembership>(
-    {
-      TableName: tableNames.memberships!,
-      KeyConditionExpression: "userId = :userId",
-      ExpressionAttributeValues: { ":userId": userId },
-      IndexName: "ByUser",
-    },
-  );
+  const memberships = await queryAll<OrganizationMembership>({
+    TableName: tableNames.memberships!,
+    KeyConditionExpression: "userId = :userId",
+    ExpressionAttributeValues: { ":userId": userId },
+    IndexName: "ByUser",
+  });
   const activeMemberships = memberships.filter(
     (membership) => membership.status === "ACTIVE",
   );
 
-  const assignments = await queryAll<StaffLocationAssignment>(
-    {
-      TableName: tableNames.assignments!,
-      KeyConditionExpression: "userId = :userId",
-      ExpressionAttributeValues: { ":userId": userId },
-    },
-  );
+  const assignments = await queryAll<StaffLocationAssignment>({
+    TableName: tableNames.assignments!,
+    KeyConditionExpression: "userId = :userId",
+    ExpressionAttributeValues: { ":userId": userId },
+  });
   const activeAssignments = assignments.filter(
     (assignment) => assignment.status === "ACTIVE",
   );
@@ -83,15 +77,13 @@ export const handler = async (
 
         const locations: OrganizationLocation[] =
           membership.role === "ADMIN"
-            ? await queryAll<OrganizationLocation>(
-                {
-                  TableName: tableNames.locations!,
-                  KeyConditionExpression: "organizationId = :organizationId",
-                  ExpressionAttributeValues: {
-                    ":organizationId": membership.organizationId,
-                  },
+            ? await queryAll<OrganizationLocation>({
+                TableName: tableNames.locations!,
+                KeyConditionExpression: "organizationId = :organizationId",
+                ExpressionAttributeValues: {
+                  ":organizationId": membership.organizationId,
                 },
-              )
+              })
             : await Promise.all(
                 activeAssignments
                   .filter(

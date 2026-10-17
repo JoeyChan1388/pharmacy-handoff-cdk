@@ -1,11 +1,10 @@
-import * as cdk from "aws-cdk-lib/core";
-
 import { ApiStack } from "../lib/api-stack";
 import { AuthStack } from "../lib/auth-stack";
 import { DataStack } from "../lib/data-stack";
-
 import { describe, expect, test } from "@jest/globals";
 import { Match, Template } from "aws-cdk-lib/assertions";
+
+import * as cdk from "aws-cdk-lib/core";
 
 describe("AuthStack", () => {
   const app = new cdk.App();
@@ -466,9 +465,11 @@ describe("ApiStack", () => {
         HttpMethod?: string;
         AuthorizationType?: string;
       };
-      return ["GET", "POST", "PATCH", "DELETE"].includes(
-        properties.HttpMethod ?? "",
-      ) && properties.AuthorizationType === "COGNITO_USER_POOLS";
+      return (
+        ["GET", "POST", "PATCH", "DELETE"].includes(
+          properties.HttpMethod ?? "",
+        ) && properties.AuthorizationType === "COGNITO_USER_POOLS"
+      );
     });
     expect(platformCrudMethods.length).toBeGreaterThanOrEqual(13);
 

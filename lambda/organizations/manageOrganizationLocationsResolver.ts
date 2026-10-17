@@ -1,17 +1,11 @@
-import {
-  GetCommand,
-  PutCommand,
-  UpdateCommand,
-} from "@aws-sdk/lib-dynamodb";
 import { randomUUID } from "node:crypto";
-import { dynamodb, queryAll } from "../shared/dynamodb";
 import { parseJsonBody } from "../shared/validation";
+import { dynamodb, queryAll } from "../shared/dynamodb";
 import { getCallerUserId } from "../shared/authorization";
 import { jsonResponse as response } from "../shared/http";
+import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
-import type {
-  CreateOrganizationLocationRequest,
-} from "../shared/types";
+import type { CreateOrganizationLocationRequest } from "../shared/types";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 
 /**
@@ -147,7 +141,9 @@ export const handler = async (
         }),
       );
     } catch (error) {
-      if ((error as { name?: string }).name === "ConditionalCheckFailedException") {
+      if (
+        (error as { name?: string }).name === "ConditionalCheckFailedException"
+      ) {
         return response(event, 404, { message: "Location not found" });
       }
       throw error;
@@ -159,11 +155,15 @@ export const handler = async (
     if (!locationId) {
       return response(event, 400, { message: "locationId is required" });
     }
-    const body = parseJsonBody<Partial<CreateOrganizationLocationRequest> & {
-      status?: unknown;
-    }>(event);
+    const body = parseJsonBody<
+      Partial<CreateOrganizationLocationRequest> & {
+        status?: unknown;
+      }
+    >(event);
     if (!body) {
-      return response(event, 400, { message: "Request body must be valid JSON" });
+      return response(event, 400, {
+        message: "Request body must be valid JSON",
+      });
     }
 
     const allowedFields = [
@@ -180,10 +180,15 @@ export const handler = async (
       for (const field of allowedFields) {
         if (body[field] !== undefined) {
           const maxLength =
-            field === "name" ? 120 :
-            field === "city" || field === "province" ? 100 :
-            field === "postalCode" ? 20 :
-            field === "phone" ? 32 : 160;
+            field === "name"
+              ? 120
+              : field === "city" || field === "province"
+                ? 100
+                : field === "postalCode"
+                  ? 20
+                  : field === "phone"
+                    ? 32
+                    : 160;
           const value = optionalText(body[field], field, maxLength);
           if (!value) {
             return response(event, 400, {
@@ -211,7 +216,9 @@ export const handler = async (
       });
     }
 
-    const expressionNames: Record<string, string> = { "#updatedAt": "updatedAt" };
+    const expressionNames: Record<string, string> = {
+      "#updatedAt": "updatedAt",
+    };
     const expressionValues: Record<string, string> = {
       ":updatedAt": new Date().toISOString(),
     };
@@ -236,7 +243,9 @@ export const handler = async (
         }),
       );
     } catch (error) {
-      if ((error as { name?: string }).name === "ConditionalCheckFailedException") {
+      if (
+        (error as { name?: string }).name === "ConditionalCheckFailedException"
+      ) {
         return response(event, 404, { message: "Location not found" });
       }
       throw error;

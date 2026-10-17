@@ -17,8 +17,7 @@ export function getCallerUserId(
   event: APIGatewayProxyEvent,
 ): string | undefined {
   const claims = event.requestContext.authorizer as
-    | CognitoAuthorizerClaims
-    | undefined;
+    CognitoAuthorizerClaims | undefined;
   return claims?.claims?.sub;
 }
 
