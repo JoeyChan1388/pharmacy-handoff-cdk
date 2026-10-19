@@ -31,6 +31,7 @@ export class DataStack extends cdk.Stack {
       pointInTimeRecoverySpecification: {
         pointInTimeRecoveryEnabled: true,
       },
+      deletionProtection: true,
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
     });
 
@@ -49,6 +50,7 @@ export class DataStack extends cdk.Stack {
       pointInTimeRecoverySpecification: {
         pointInTimeRecoveryEnabled: true,
       },
+      deletionProtection: true,
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
     });
 
@@ -71,6 +73,7 @@ export class DataStack extends cdk.Stack {
       pointInTimeRecoverySpecification: {
         pointInTimeRecoveryEnabled: true,
       },
+      deletionProtection: true,
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
     });
 
@@ -96,6 +99,7 @@ export class DataStack extends cdk.Stack {
         pointInTimeRecoverySpecification: {
           pointInTimeRecoveryEnabled: true,
         },
+        deletionProtection: true,
         billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       },
     );
@@ -140,6 +144,7 @@ export class DataStack extends cdk.Stack {
         pointInTimeRecoverySpecification: {
           pointInTimeRecoveryEnabled: true,
         },
+        deletionProtection: true,
         billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       },
     );
