@@ -28,6 +28,9 @@ export class DataStack extends cdk.Stack {
     this.usersTable = new dynamodb.Table(this, "UsersTable", {
       tableName: `${id}-UsersTable`,
       partitionKey: { name: "userId", type: dynamodb.AttributeType.STRING },
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
     });
 
@@ -42,6 +45,9 @@ export class DataStack extends cdk.Stack {
       partitionKey: {
         name: "organizationId",
         type: dynamodb.AttributeType.STRING,
+      },
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
     });
@@ -61,6 +67,9 @@ export class DataStack extends cdk.Stack {
       sortKey: {
         name: "locationId",
         type: dynamodb.AttributeType.STRING,
+      },
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
     });
@@ -83,6 +92,9 @@ export class DataStack extends cdk.Stack {
         sortKey: {
           name: "locationId",
           type: dynamodb.AttributeType.STRING,
+        },
+        pointInTimeRecoverySpecification: {
+          pointInTimeRecoveryEnabled: true,
         },
         billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       },
@@ -124,6 +136,9 @@ export class DataStack extends cdk.Stack {
         sortKey: {
           name: "userId",
           type: dynamodb.AttributeType.STRING,
+        },
+        pointInTimeRecoverySpecification: {
+          pointInTimeRecoveryEnabled: true,
         },
         billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       },
