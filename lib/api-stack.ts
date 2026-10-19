@@ -70,6 +70,29 @@ export class ApiStack extends cdk.Stack {
     });
 
     /**
+     * CORS on Gateway-Generated Errors
+     *
+     * Responses produced by API Gateway itself, such as a 401 from the Cognito
+     * authorizer or a 403 for a missing token, never reach a Lambda and so
+     * carry no CORS headers by default. Without these the browser hides the
+     * real status behind a generic network error. These only ever carry an
+     * error message, so echoing the request origin is safe.
+     */
+    const errorCorsHeaders = {
+      "Access-Control-Allow-Origin": "method.request.header.origin",
+      "Access-Control-Allow-Headers": "'Authorization,Content-Type'",
+      Vary: "'Origin'",
+    };
+    api.addGatewayResponse("Default4xxCors", {
+      type: apigateway.ResponseType.DEFAULT_4XX,
+      responseHeaders: errorCorsHeaders,
+    });
+    api.addGatewayResponse("Default5xxCors", {
+      type: apigateway.ResponseType.DEFAULT_5XX,
+      responseHeaders: errorCorsHeaders,
+    });
+
+    /**
      * ApiUrl Output
      *
      * This output will display the base URL for the API Gateway in the

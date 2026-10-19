@@ -304,6 +304,19 @@ describe("ApiStack", () => {
     });
   });
 
+  test("adds CORS headers to gateway-generated 4xx and 5xx responses", () => {
+    template.resourceCountIs("AWS::ApiGateway::GatewayResponse", 2);
+    for (const responseType of ["DEFAULT_4XX", "DEFAULT_5XX"]) {
+      template.hasResourceProperties("AWS::ApiGateway::GatewayResponse", {
+        ResponseType: responseType,
+        ResponseParameters: Match.objectLike({
+          "gatewayresponse.header.Access-Control-Allow-Origin":
+            "method.request.header.origin",
+        }),
+      });
+    }
+  });
+
   test("creates a staff-authenticated organizations and locations endpoint", () => {
     const getMethods = Object.values(
       template.findResources("AWS::ApiGateway::Method"),
