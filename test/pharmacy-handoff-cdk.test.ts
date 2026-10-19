@@ -231,7 +231,9 @@ describe("DataStack", () => {
   });
 
   test("enables deletion protection and point-in-time recovery on every table", () => {
-    const tables = Object.values(template.findResources("AWS::DynamoDB::Table"));
+    const tables = Object.values(
+      template.findResources("AWS::DynamoDB::Table"),
+    );
     expect(tables).toHaveLength(5);
 
     for (const table of tables) {
