@@ -94,7 +94,7 @@ export class ApiStack extends cdk.Stack {
         accessLogFormat: apigateway.AccessLogFormat.jsonWithStandardFields(),
       },
     });
-    
+
     this.api = api;
 
     /**
