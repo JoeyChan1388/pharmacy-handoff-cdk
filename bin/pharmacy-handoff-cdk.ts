@@ -1,6 +1,7 @@
 import { ApiStack } from "../lib/api-stack";
 import { AuthStack } from "../lib/auth-stack";
 import { DataStack } from "../lib/data-stack";
+import { ObservabilityStack } from "../lib/observability-stack";
 
 import * as cdk from "aws-cdk-lib/core";
 
@@ -22,13 +23,24 @@ const platformAdminUserIds = (
   .filter(Boolean);
 
 /**
+ * Alert Email
+ *
+ * Address subscribed to the alarm SNS topic. Override with
+ * `-c alertEmail=...` or the ALERT_EMAIL environment variable.
+ */
+const alertEmail: string =
+  app.node.tryGetContext("alertEmail") ??
+  process.env.ALERT_EMAIL ??
+  "joey.chan0831@gmail.com";
+
+/**
  * Stacks
  */
 const dataStack = new DataStack(app, "PharmacyHandoffData");
 const authStack = new AuthStack(app, "PharmacyHandoffAuth", {
   usersTable: dataStack.usersTable,
 });
-new ApiStack(app, "PharmacyHandoffApi", {
+const apiStack = new ApiStack(app, "PharmacyHandoffApi", {
   platformAdminUserIds,
   usersTable: dataStack.usersTable,
   staffUserPool: authStack.staffUserPool,
@@ -37,4 +49,16 @@ new ApiStack(app, "PharmacyHandoffApi", {
   organizationsTable: dataStack.organizationsTable,
   organizationMembershipsTable: dataStack.organizationMembershipsTable,
   staffLocationAssignmentsTable: dataStack.staffLocationAssignmentsTable,
+});
+new ObservabilityStack(app, "PharmacyHandoffObservability", {
+  alertEmail,
+  api: apiStack.api,
+  functions: apiStack.functions,
+  tables: {
+    Users: dataStack.usersTable,
+    Locations: dataStack.locationsTable,
+    Organizations: dataStack.organizationsTable,
+    OrganizationMemberships: dataStack.organizationMembershipsTable,
+    StaffLocationAssignments: dataStack.staffLocationAssignmentsTable,
+  },
 });

@@ -4,6 +4,7 @@ import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 
 import * as cdk from "aws-cdk-lib/core";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as logs from "aws-cdk-lib/aws-logs";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
@@ -33,6 +34,9 @@ interface ApiStackProps extends cdk.StackProps {
  * front-end applications.
  */
 export class ApiStack extends cdk.Stack {
+  public readonly api: apigateway.RestApi;
+  public readonly functions: lambda.Function[];
+
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
 
@@ -55,6 +59,15 @@ export class ApiStack extends cdk.Stack {
     ];
 
     /**
+     * API Access Logs
+     *
+     * This log group stores API Gateway access logs for one month.
+     */
+    const accessLogGroup = new logs.LogGroup(this, "ApiAccessLogs", {
+      retention: logs.RetentionDays.ONE_MONTH,
+    });
+
+    /**
      * PharmacyHandoffApi
      *
      * Primary API Gateway responsible for setting up API endpoints for both
@@ -62,6 +75,9 @@ export class ApiStack extends cdk.Stack {
      */
     const api = new apigateway.RestApi(this, "PharmacyHandoffApi", {
       restApiName: `${id}-Api`,
+      // The CDK feature flag disables the account-level CloudWatch role by
+      // default; access logging needs it, so it is enabled explicitly.
+      cloudWatchRole: true,
       defaultCorsPreflightOptions: {
         allowOrigins: AllowedWebOrigins,
         allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
@@ -70,8 +86,16 @@ export class ApiStack extends cdk.Stack {
       deployOptions: {
         throttlingRateLimit: 50,
         throttlingBurstLimit: 100,
-      }
+        metricsEnabled: true,
+        tracingEnabled: true,
+        accessLogDestination: new apigateway.LogGroupLogDestination(
+          accessLogGroup,
+        ),
+        accessLogFormat: apigateway.AccessLogFormat.jsonWithStandardFields(),
+      },
     });
+    
+    this.api = api;
 
     /**
      * CORS on Gateway-Generated Errors
@@ -812,5 +836,36 @@ export class ApiStack extends cdk.Stack {
         authorizer: staffAuthorizer,
       },
     );
+
+    /**
+     * Operational Defaults for Every Lambda
+     *
+     * Applied after all functions exist so new resolvers are covered
+     * automatically: X-Ray active tracing (with the permissions it needs) and
+     * a bounded log retention so log groups do not grow forever.
+     */
+    this.functions = this.node
+      .findAll()
+      .filter(
+        (child): child is lambda.Function => child instanceof lambda.Function,
+      );
+    for (const fn of this.functions) {
+      (fn.node.defaultChild as lambda.CfnFunction).tracingConfig = {
+        mode: "Active",
+      };
+      fn.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ["xray:PutTraceSegments", "xray:PutTelemetryRecords"],
+          resources: ["*"],
+        }),
+      );
+      // Only present when the useCdkManagedLogGroup feature flag is on
+      // (set in cdk.json); otherwise Lambda creates the group at runtime.
+      const logGroup = fn.node.tryFindChild("LogGroup")?.node.defaultChild as
+        logs.CfnLogGroup | undefined;
+      if (logGroup) {
+        logGroup.retentionInDays = logs.RetentionDays.ONE_MONTH;
+      }
+    }
   }
 }
