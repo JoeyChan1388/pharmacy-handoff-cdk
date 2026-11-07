@@ -194,7 +194,11 @@ export class ApiStack extends cdk.Stack {
      */
     inviteStaff.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ["cognito-idp:AdminCreateUser", "cognito-idp:AdminGetUser"],
+        actions: [
+          "cognito-idp:AdminCreateUser",
+          "cognito-idp:AdminDeleteUser",
+          "cognito-idp:AdminGetUser",
+        ],
         resources: [props.staffUserPool.userPoolArn],
       }),
     );

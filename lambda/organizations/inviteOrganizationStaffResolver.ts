@@ -1,11 +1,12 @@
 import { dynamodb } from "../shared/dynamodb";
 import { jsonResponse } from "../shared/http";
 import { getCallerUserId } from "../shared/authorization";
-import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { normalizeEmail, parseJsonBody } from "../shared/validation";
+import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { isAccessError, loadOrganizationAccess } from "../shared/organizations";
 import {
   AdminCreateUserCommand,
+  AdminDeleteUserCommand,
   AdminGetUserCommand,
   CognitoIdentityProviderClient,
 } from "@aws-sdk/client-cognito-identity-provider";
@@ -51,6 +52,7 @@ interface Config {
  */
 interface StaffAccount {
   userId: string;
+  created: boolean;
   status: "ACTIVE" | "INVITED";
 }
 
@@ -107,7 +109,8 @@ function validateLocationIds(value: unknown): string[] | string {
  *
  * @param staffUserPoolId The staff user pool ID
  * @param email The normalized email address
- * @returns The account's sub and whether it is already confirmed
+ * @returns The account's sub, whether it is already confirmed, and whether
+ * this call created it
  */
 async function findOrCreateStaffAccount(
   staffUserPoolId: string,
@@ -128,8 +131,10 @@ async function findOrCreateStaffAccount(
     }
   }
 
+  let created = false;
   if (!attributes) {
-    const created = await cognito.send(
+    created = true;
+    const createdUser = await cognito.send(
       new AdminCreateUserCommand({
         UserPoolId: staffUserPoolId,
         Username: email,
@@ -137,8 +142,8 @@ async function findOrCreateStaffAccount(
         DesiredDeliveryMediums: ["EMAIL"],
       }),
     );
-    attributes = created.User?.Attributes;
-    cognitoStatus = created.User?.UserStatus;
+    attributes = createdUser.User?.Attributes;
+    cognitoStatus = createdUser.User?.UserStatus;
   }
 
   const userId = attributes?.find(({ Name }) => Name === "sub")?.Value;
@@ -149,6 +154,7 @@ async function findOrCreateStaffAccount(
   return {
     userId,
     status: cognitoStatus === "CONFIRMED" ? "ACTIVE" : "INVITED",
+    created,
   };
 }
 
@@ -158,7 +164,9 @@ async function findOrCreateStaffAccount(
  * Handles POST /organizations/{organizationId}/staff. An organization admin
  * invites a staff member by email and assigns them to one or more of the
  * organization's locations. The Cognito account is created if needed, then
- * the user profile, membership, and location assignments are upserted.
+ * the user profile, membership, and location assignments are upserted in a
+ * single DynamoDB transaction. If it fails, a newly created Cognito user is
+ * deleted.
  *
  * @param event The API Gateway event containing the request details
  * and authorizer claims.
@@ -248,100 +256,127 @@ export const handler = async (
   const account = await findOrCreateStaffAccount(config.staffUserPoolId, email);
   const { userId, status } = account;
 
-  // Admins keep their role; re-inviting one as staff is a conflict.
-  const existingMembership = await dynamodb.send(
-    new GetCommand({
-      TableName: config.membershipsTable,
-      Key: { organizationId, userId },
-      ConsistentRead: true,
-    }),
-  );
-  if (existingMembership.Item?.role === "ADMIN") {
-    return jsonResponse(event, 409, {
-      message: "This user is already an organization admin",
+  try {
+    // Admins keep their role; re-inviting one as staff is a conflict.
+    const existingMembership = await dynamodb.send(
+      new GetCommand({
+        TableName: config.membershipsTable,
+        Key: { organizationId, userId },
+        ConsistentRead: true,
+      }),
+    );
+    if (existingMembership.Item?.role === "ADMIN") {
+      return jsonResponse(event, 409, {
+        message: "This user is already an organization admin",
+      });
+    }
+
+    /**
+     * Upsert Profile, Membership, and Assignments Atomically
+     *
+     * All writes succeed or none do, so a failure can never leave a
+     * half-created staff member. Each write preserves createdAt on existing
+     * items so a re-invite refreshes status and assignments without
+     * rewriting history.
+     */
+    const now = new Date().toISOString();
+
+    await dynamodb.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: config.usersTable,
+              Key: { userId },
+              UpdateExpression:
+                "SET #email = :email, #userPoolType = :userPoolType, #createdAt = if_not_exists(#createdAt, :now), #updatedAt = :now",
+              ExpressionAttributeNames: {
+                "#email": "email",
+                "#userPoolType": "userPoolType",
+                "#createdAt": "createdAt",
+                "#updatedAt": "updatedAt",
+              },
+              ExpressionAttributeValues: {
+                ":email": email,
+                ":userPoolType": "STAFF",
+                ":now": now,
+              },
+            },
+          },
+          {
+            Update: {
+              TableName: config.membershipsTable,
+              Key: { organizationId, userId },
+              UpdateExpression:
+                "SET #email = :email, #role = :role, #status = :status, #createdAt = if_not_exists(#createdAt, :now), #updatedAt = :now",
+              ExpressionAttributeNames: {
+                "#email": "email",
+                "#role": "role",
+                "#status": "status",
+                "#createdAt": "createdAt",
+                "#updatedAt": "updatedAt",
+              },
+              ExpressionAttributeValues: {
+                ":email": email,
+                ":role": "STAFF",
+                ":status": status,
+                ":now": now,
+              },
+            },
+          },
+          ...locationIds.map((locationId) => ({
+            Update: {
+              TableName: config.assignmentsTable,
+              Key: { userId, locationId },
+              UpdateExpression:
+                "SET #organizationId = :organizationId, #status = :status, #createdAt = if_not_exists(#createdAt, :now), #updatedAt = :now",
+              ExpressionAttributeNames: {
+                "#organizationId": "organizationId",
+                "#status": "status",
+                "#createdAt": "createdAt",
+                "#updatedAt": "updatedAt",
+              },
+              ExpressionAttributeValues: {
+                ":organizationId": organizationId,
+                ":status": status,
+                ":now": now,
+              },
+            },
+          })),
+        ],
+      }),
+    );
+
+    return jsonResponse(event, 201, {
+      userId,
+      email,
+      organizationId,
+      role: "STAFF",
+      status,
+      locationIds,
     });
+  } catch (error) {
+    /**
+     * Roll Back the Cognito User
+     *
+     * Only a user created by this request is removed. Pre-existing accounts
+     * are never deleted.
+     */
+    if (account.created) {
+      try {
+        await cognito.send(
+          new AdminDeleteUserCommand({
+            UserPoolId: config.staffUserPoolId,
+            Username: email,
+          }),
+        );
+      } catch (cleanupError) {
+        console.error(
+          "Could not remove Cognito user after staff invitation failed",
+          cleanupError,
+        );
+      }
+    }
+    throw error;
   }
-
-  /**
-   * Upsert Profile, Membership, and Assignments
-   *
-   * Each write preserves createdAt on existing items so a re-invite refreshes
-   * status and assignments without rewriting history.
-   */
-  const now = new Date().toISOString();
-
-  await dynamodb.send(
-    new UpdateCommand({
-      TableName: config.usersTable,
-      Key: { userId },
-      UpdateExpression:
-        "SET #email = :email, #userPoolType = :userPoolType, #createdAt = if_not_exists(#createdAt, :now), #updatedAt = :now",
-      ExpressionAttributeNames: {
-        "#email": "email",
-        "#userPoolType": "userPoolType",
-        "#createdAt": "createdAt",
-        "#updatedAt": "updatedAt",
-      },
-      ExpressionAttributeValues: {
-        ":email": email,
-        ":userPoolType": "STAFF",
-        ":now": now,
-      },
-    }),
-  );
-
-  await dynamodb.send(
-    new UpdateCommand({
-      TableName: config.membershipsTable,
-      Key: { organizationId, userId },
-      UpdateExpression:
-        "SET #email = :email, #role = :role, #status = :status, #createdAt = if_not_exists(#createdAt, :now), #updatedAt = :now",
-      ExpressionAttributeNames: {
-        "#email": "email",
-        "#role": "role",
-        "#status": "status",
-        "#createdAt": "createdAt",
-        "#updatedAt": "updatedAt",
-      },
-      ExpressionAttributeValues: {
-        ":email": email,
-        ":role": "STAFF",
-        ":status": status,
-        ":now": now,
-      },
-    }),
-  );
-
-  await Promise.all(
-    locationIds.map((locationId) =>
-      dynamodb.send(
-        new UpdateCommand({
-          TableName: config.assignmentsTable,
-          Key: { userId, locationId },
-          UpdateExpression:
-            "SET #organizationId = :organizationId, #status = :status, #createdAt = if_not_exists(#createdAt, :now), #updatedAt = :now",
-          ExpressionAttributeNames: {
-            "#organizationId": "organizationId",
-            "#status": "status",
-            "#createdAt": "createdAt",
-            "#updatedAt": "updatedAt",
-          },
-          ExpressionAttributeValues: {
-            ":organizationId": organizationId,
-            ":status": status,
-            ":now": now,
-          },
-        }),
-      ),
-    ),
-  );
-
-  return jsonResponse(event, 201, {
-    userId,
-    email,
-    organizationId,
-    role: "STAFF",
-    status,
-    locationIds,
-  });
 };

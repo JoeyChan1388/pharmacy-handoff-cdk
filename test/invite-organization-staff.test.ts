@@ -42,7 +42,10 @@ function invite(body: Record<string, unknown>) {
   });
 }
 
-function mockTables(overrides: Record<string, SendHandler> = {}) {
+function mockTables(
+  overrides: Record<string, SendHandler> = {},
+  transactWrite: SendHandler = () => ({}),
+) {
   routeByTable(sendMock, {
     memberships: (command) =>
       command.constructor.name === "GetCommand" &&
@@ -57,6 +60,13 @@ function mockTables(overrides: Record<string, SendHandler> = {}) {
     assignments: () => ({}),
     ...overrides,
   });
+  // Transactions span tables and carry no top-level TableName.
+  const routed = sendMock.getMockImplementation()!;
+  sendMock.mockImplementation(async (command: any) =>
+    command.constructor.name === "TransactWriteCommand"
+      ? transactWrite(command)
+      : routed(command),
+  );
 }
 
 describe("invite organization staff resolver", () => {
@@ -92,13 +102,14 @@ describe("invite organization staff resolver", () => {
       status: "ACTIVE",
       locationIds: ["loc-1"],
     });
-    const updates = sentCommands(sendMock, "UpdateCommand");
-    expect(updates.map((command) => command.input.TableName)).toEqual([
-      "users",
-      "memberships",
-      "assignments",
-    ]);
+    const [transaction] = sentCommands(sendMock, "TransactWriteCommand");
+    expect(
+      transaction.input.TransactItems.map(
+        (item: { Update: { TableName: string } }) => item.Update.TableName,
+      ),
+    ).toEqual(["users", "memberships", "assignments"]);
     expect(sentCommands(cognitoMock, "AdminCreateUserCommand")).toHaveLength(0);
+    expect(sentCommands(cognitoMock, "AdminDeleteUserCommand")).toHaveLength(0);
   });
 
   test("creates the Cognito user when none exists and marks them invited", async () => {
@@ -172,6 +183,52 @@ describe("invite organization staff resolver", () => {
     );
 
     expect(result.statusCode).toBe(409);
-    expect(sentCommands(sendMock, "UpdateCommand")).toHaveLength(0);
+    expect(sentCommands(sendMock, "TransactWriteCommand")).toHaveLength(0);
+  });
+
+  test("deletes the newly created Cognito user when the transaction fails", async () => {
+    mockTables({}, () => {
+      throw new Error("DynamoDB is down");
+    });
+    routeByCommand(cognitoMock, {
+      AdminGetUserCommand: () => {
+        throw awsError("UserNotFoundException");
+      },
+      AdminCreateUserCommand: () => ({
+        User: {
+          Attributes: [SUB_ATTRIBUTE],
+          UserStatus: "FORCE_CHANGE_PASSWORD",
+        },
+      }),
+      AdminDeleteUserCommand: () => ({}),
+    });
+
+    await expect(
+      handler(invite({ email: "new@example.com", locationIds: ["loc-1"] })),
+    ).rejects.toThrow("DynamoDB is down");
+
+    const [cleanup] = sentCommands(cognitoMock, "AdminDeleteUserCommand");
+    expect(cleanup.input).toEqual({
+      UserPoolId: "staff-pool",
+      Username: "new@example.com",
+    });
+  });
+
+  test("keeps a pre-existing Cognito user when the transaction fails", async () => {
+    mockTables({}, () => {
+      throw new Error("DynamoDB is down");
+    });
+    routeByCommand(cognitoMock, {
+      AdminGetUserCommand: () => ({
+        UserAttributes: [SUB_ATTRIBUTE],
+        UserStatus: "CONFIRMED",
+      }),
+    });
+
+    await expect(
+      handler(invite({ email: "old@example.com", locationIds: ["loc-1"] })),
+    ).rejects.toThrow("DynamoDB is down");
+
+    expect(sentCommands(cognitoMock, "AdminDeleteUserCommand")).toHaveLength(0);
   });
 });
