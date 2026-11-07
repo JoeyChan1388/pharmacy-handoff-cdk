@@ -31,6 +31,9 @@ export function jsonResponse(
     statusCode,
     headers: {
       "Content-Type": "application/json",
+      "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
       ...(origin && allowedOrigins.has(origin)
         ? { "Access-Control-Allow-Origin": origin, Vary: "Origin" }
         : {}),

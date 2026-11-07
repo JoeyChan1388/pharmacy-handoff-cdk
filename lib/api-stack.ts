@@ -67,6 +67,10 @@ export class ApiStack extends cdk.Stack {
         allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allowHeaders: ["Authorization", "Content-Type"],
       },
+      deployOptions: {
+        throttlingRateLimit: 50,
+        throttlingBurstLimit: 100,
+      }
     });
 
     /**

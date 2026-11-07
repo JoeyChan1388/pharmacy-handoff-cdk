@@ -41,6 +41,18 @@ export class AuthStack extends cdk.Stack {
       autoVerify: {
         email: true,
       },
+      passwordPolicy: {
+        minLength: 8,
+        requireLowercase: true,
+        requireUppercase: true,
+        requireDigits: true,
+        requireSymbols: true,
+      },
+      mfa: cognito.Mfa.OPTIONAL,
+      mfaSecondFactor: {
+        sms: true,
+        otp: false,
+      },
     });
 
     /**
@@ -54,6 +66,13 @@ export class AuthStack extends cdk.Stack {
       },
       autoVerify: {
         email: true,
+      },
+      passwordPolicy: {
+        minLength: 8,
+        requireLowercase: true,
+        requireUppercase: true,
+        requireDigits: true,
+        requireSymbols: true,
       },
     });
 
