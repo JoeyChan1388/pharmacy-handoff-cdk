@@ -11,8 +11,13 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
  */
 export class DataStack extends cdk.Stack {
   public readonly usersTable: dynamodb.Table;
+  public readonly alertsTable: dynamodb.Table;
+  public readonly messagesTable: dynamodb.Table;
   public readonly locationsTable: dynamodb.Table;
   public readonly organizationsTable: dynamodb.Table;
+  public readonly conversationsTable: dynamodb.Table;
+  public readonly alertReceiptsTable: dynamodb.Table;
+  public readonly conversationMembersTable: dynamodb.Table;
   public readonly organizationMembershipsTable: dynamodb.Table;
   public readonly staffLocationAssignmentsTable: dynamodb.Table;
 
@@ -168,6 +173,108 @@ export class DataStack extends cdk.Stack {
     });
 
     /**
+     * Conversations Table
+     *
+     * One item per staff conversation (direct or group). Conversations never
+     * span organizations. Holds the participant list and the latest message.
+     */
+    this.conversationsTable = new dynamodb.Table(this, "ConversationsTable", {
+      tableName: `${id}-ConversationsTable`,
+      partitionKey: {
+        name: "conversationId",
+        type: dynamodb.AttributeType.STRING,
+      },
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
+      deletionProtection: true,
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+    });
+
+    /**
+     * Conversation Members Table
+     *
+     * One item per participant per conversation. Querying by userId lists a
+     * user's inbox; each item carries that user's read marker and a copy of
+     * the latest message so the inbox needs no per-conversation lookups.
+     */
+    this.conversationMembersTable = new dynamodb.Table(
+      this,
+      "ConversationMembersTable",
+      {
+        tableName: `${id}-ConversationMembersTable`,
+        partitionKey: {
+          name: "userId",
+          type: dynamodb.AttributeType.STRING,
+        },
+        sortKey: {
+          name: "conversationId",
+          type: dynamodb.AttributeType.STRING,
+        },
+        pointInTimeRecoverySpecification: {
+          pointInTimeRecoveryEnabled: true,
+        },
+        deletionProtection: true,
+        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      },
+    );
+
+    /**
+     * Messages Table
+     *
+     * Messages keyed by conversation. The sort key starts with a zero-padded
+     * timestamp so a query returns them in chronological order.
+     */
+    this.messagesTable = new dynamodb.Table(this, "MessagesTable", {
+      tableName: `${id}-MessagesTable`,
+      partitionKey: {
+        name: "conversationId",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: { name: "messageId", type: dynamodb.AttributeType.STRING },
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
+      deletionProtection: true,
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+    });
+
+    /**
+     * Alerts Table
+     *
+     * Platform-wide alerts sent to every staff user. All alerts share one
+     * partition key; the time-ordered sort key lists newest first. Volume is
+     * low (platform admin broadcasts), so a single partition is fine.
+     */
+    this.alertsTable = new dynamodb.Table(this, "AlertsTable", {
+      tableName: `${id}-AlertsTable`,
+      partitionKey: { name: "feed", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "alertId", type: dynamodb.AttributeType.STRING },
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
+      deletionProtection: true,
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+    });
+
+    /**
+     * Alert Receipts Table
+     *
+     * One item per user per alert they have read. Unread is the absence of
+     * a receipt, so sending an alert writes nothing per user.
+     */
+    this.alertReceiptsTable = new dynamodb.Table(this, "AlertReceiptsTable", {
+      tableName: `${id}-AlertReceiptsTable`,
+      partitionKey: { name: "userId", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "alertId", type: dynamodb.AttributeType.STRING },
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
+      deletionProtection: true,
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+    });
+
+    /**
      * Removal Policies
      *
      * The tables' removal policies are set to RETAIN to ensure that the data
@@ -182,5 +289,10 @@ export class DataStack extends cdk.Stack {
     this.organizationMembershipsTable.applyRemovalPolicy(
       cdk.RemovalPolicy.RETAIN,
     );
+    this.conversationsTable.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
+    this.conversationMembersTable.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
+    this.messagesTable.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
+    this.alertsTable.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
+    this.alertReceiptsTable.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
   }
 }

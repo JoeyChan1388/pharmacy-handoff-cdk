@@ -45,6 +45,11 @@ const authStack = new AuthStack(app, "PharmacyHandoffAuth", {
 const apiStack = new ApiStack(app, "PharmacyHandoffApi", {
   platformAdminUserIds,
   usersTable: dataStack.usersTable,
+  alertsTable: dataStack.alertsTable,
+  messagesTable: dataStack.messagesTable,
+  alertReceiptsTable: dataStack.alertReceiptsTable,
+  conversationsTable: dataStack.conversationsTable,
+  conversationMembersTable: dataStack.conversationMembersTable,
   staffUserPool: authStack.staffUserPool,
   locationsTable: dataStack.locationsTable,
   patientUserPool: authStack.patientUserPool,
@@ -62,5 +67,10 @@ new ObservabilityStack(app, "PharmacyHandoffObservability", {
     Organizations: dataStack.organizationsTable,
     OrganizationMemberships: dataStack.organizationMembershipsTable,
     StaffLocationAssignments: dataStack.staffLocationAssignmentsTable,
+    Conversations: dataStack.conversationsTable,
+    ConversationMembers: dataStack.conversationMembersTable,
+    Messages: dataStack.messagesTable,
+    Alerts: dataStack.alertsTable,
+    AlertReceipts: dataStack.alertReceiptsTable,
   },
 });

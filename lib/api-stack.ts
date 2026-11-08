@@ -17,11 +17,16 @@ import * as apigateway from "aws-cdk-lib/aws-apigateway";
  */
 interface ApiStackProps extends cdk.StackProps {
   usersTable: dynamodb.ITable;
+  alertsTable: dynamodb.ITable;
+  messagesTable: dynamodb.ITable;
   platformAdminUserIds: string[];
   locationsTable: dynamodb.ITable;
   staffUserPool: cognito.IUserPool;
   patientUserPool: cognito.IUserPool;
+  alertReceiptsTable: dynamodb.ITable;
+  conversationsTable: dynamodb.ITable;
   organizationsTable: dynamodb.ITable;
+  conversationMembersTable: dynamodb.ITable;
   organizationMembershipsTable: dynamodb.ITable;
   staffLocationAssignmentsTable: dynamodb.ITable;
 }
@@ -448,6 +453,73 @@ export class ApiStack extends cdk.Stack {
     props.organizationMembershipsTable.grantReadData(
       getPlatformLocationDetails,
     );
+
+    /**
+     * Messaging Lambda Function
+     *
+     * Staff conversations (direct and group) within one organization, plus
+     * the colleague directory used to start them.
+     */
+    const messaging = new NodejsFunction(this, "MessagingResolver", {
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: join(__dirname, "../lambda/messaging/messagingResolver.ts"),
+      handler: "handler",
+      environment: {
+        USERS_TABLE_NAME: props.usersTable.tableName,
+        MESSAGES_TABLE_NAME: props.messagesTable.tableName,
+        ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
+          props.organizationMembershipsTable.tableName,
+        CONVERSATIONS_TABLE_NAME: props.conversationsTable.tableName,
+        CONVERSATION_MEMBERS_TABLE_NAME:
+          props.conversationMembersTable.tableName,
+        ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
+      },
+    });
+    props.usersTable.grantReadData(messaging);
+    props.organizationMembershipsTable.grantReadData(messaging);
+    props.messagesTable.grantReadWriteData(messaging);
+    props.conversationsTable.grantReadWriteData(messaging);
+    props.conversationMembersTable.grantReadWriteData(messaging);
+
+    /**
+     * Staff Alerts Lambda Function
+     *
+     * Lists the platform alerts a staff user has received and records which
+     * ones they have read.
+     */
+    const staffAlerts = new NodejsFunction(this, "StaffAlertsResolver", {
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: join(__dirname, "../lambda/messaging/staffAlertsResolver.ts"),
+      handler: "handler",
+      environment: {
+        ALERTS_TABLE_NAME: props.alertsTable.tableName,
+        ALERT_RECEIPTS_TABLE_NAME: props.alertReceiptsTable.tableName,
+        ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
+      },
+    });
+    props.alertsTable.grantReadData(staffAlerts);
+    props.alertReceiptsTable.grantReadWriteData(staffAlerts);
+
+    /**
+     * Manage Platform Alerts Lambda Function
+     *
+     * Platform admins send alerts to every staff user and list what was sent.
+     */
+    const managePlatformAlerts = new NodejsFunction(
+      this,
+      "ManagePlatformAlertsResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(__dirname, "../lambda/platform/manageAlertsResolver.ts"),
+        handler: "handler",
+        environment: {
+          ALERTS_TABLE_NAME: props.alertsTable.tableName,
+          PLATFORM_ADMIN_USER_IDS: props.platformAdminUserIds.join(","),
+          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
+        },
+      },
+    );
+    props.alertsTable.grantReadWriteData(managePlatformAlerts);
 
     /**
      * ManagePlatformUser Lambda Function
@@ -907,6 +979,75 @@ export class ApiStack extends cdk.Stack {
         authorizer: staffAuthorizer,
       },
     );
+
+    /**
+     * Messaging and Alert Routes
+     *
+     * All are protected by the staff Cognito authorizer. Messaging checks
+     * organization membership in the Lambda; alert sending additionally
+     * requires a platform admin.
+     */
+    const staffAuth = {
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+      authorizer: staffAuthorizer,
+    };
+    const messagingIntegration = new apigateway.LambdaIntegration(messaging);
+    const staffAlertsIntegration = new apigateway.LambdaIntegration(
+      staffAlerts,
+    );
+    const platformAlertsIntegration = new apigateway.LambdaIntegration(
+      managePlatformAlerts,
+    );
+
+    const conversations = staffMe.addResource("conversations");
+    const conversation = conversations.addResource("{conversationId}");
+    const conversationMessages = conversation.addResource("messages");
+    const conversationRead = conversation.addResource("read");
+
+    /**
+     * Conversation Routes and Methods
+     */
+    conversations.addMethod("GET", messagingIntegration, staffAuth);
+    conversations.addMethod("POST", messagingIntegration, staffAuth);
+    
+    /**
+     * Message Routes and Methods
+     */
+    conversationMessages.addMethod("GET", messagingIntegration, staffAuth);
+    conversationMessages.addMethod("POST", messagingIntegration, staffAuth);
+    conversationRead.addMethod("POST", messagingIntegration, staffAuth);
+    
+    /**
+     * GET /organizations/{organizationId}/colleagues Method
+     */
+    organizationResource
+      .addResource("colleagues")
+      .addMethod("GET", messagingIntegration, staffAuth);
+
+    /**
+     * Staff Alert Routes and Methods
+     */
+    const staffAlertsResource = staffMe.addResource("alerts");
+    staffAlertsResource.addMethod("GET", staffAlertsIntegration, staffAuth);
+    staffAlertsResource
+      .addResource("read-all")
+      .addMethod("POST", staffAlertsIntegration, staffAuth);
+
+    /**
+     * Staff Alert Read Routes and Methods
+     */
+    const staffAlertRead = staffAlertsResource
+      .addResource("{alertId}")
+      .addResource("read");
+    staffAlertRead.addMethod("POST", staffAlertsIntegration, staffAuth);
+    staffAlertRead.addMethod("DELETE", staffAlertsIntegration, staffAuth);
+
+    /**
+     * Platform Alert Routes and Methods
+     */
+    const platformAlerts = platform.addResource("alerts");
+    platformAlerts.addMethod("GET", platformAlertsIntegration, staffAuth);
+    platformAlerts.addMethod("POST", platformAlertsIntegration, staffAuth);
 
     /**
      * PATCH /platform/organizations/{organizationId} Method

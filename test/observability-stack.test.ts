@@ -18,6 +18,11 @@ describe("ObservabilityStack", () => {
     staffLocationAssignmentsTable: dataStack.staffLocationAssignmentsTable,
   });
   const apiStack = new ApiStack(app, "PharmacyHandoffApi", {
+    alertsTable: dataStack.alertsTable,
+    messagesTable: dataStack.messagesTable,
+    alertReceiptsTable: dataStack.alertReceiptsTable,
+    conversationsTable: dataStack.conversationsTable,
+    conversationMembersTable: dataStack.conversationMembersTable,
     platformAdminUserIds: ["admin-sub"],
     usersTable: dataStack.usersTable,
     staffUserPool: authStack.staffUserPool,
@@ -37,6 +42,11 @@ describe("ObservabilityStack", () => {
       Organizations: dataStack.organizationsTable,
       OrganizationMemberships: dataStack.organizationMembershipsTable,
       StaffLocationAssignments: dataStack.staffLocationAssignmentsTable,
+      Conversations: dataStack.conversationsTable,
+      ConversationMembers: dataStack.conversationMembersTable,
+      Messages: dataStack.messagesTable,
+      Alerts: dataStack.alertsTable,
+      AlertReceipts: dataStack.alertReceiptsTable,
     },
   });
   const template = Template.fromStack(stack);
@@ -56,7 +66,7 @@ describe("ObservabilityStack", () => {
 
   test("creates API, Lambda, and DynamoDB alarms that notify the topic", () => {
     // 2 API + 2 per Lambda + 2 per table
-    const expected = 2 + apiStack.functions.length * 2 + 5 * 2;
+    const expected = 2 + apiStack.functions.length * 2 + 10 * 2;
     template.resourceCountIs("AWS::CloudWatch::Alarm", expected);
     template.hasResourceProperties("AWS::CloudWatch::Alarm", {
       AlarmActions: [Match.objectLike({ Ref: Match.anyValue() })],

@@ -1,5 +1,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
+  BatchGetCommand,
+  type BatchGetCommandOutput,
   DynamoDBDocumentClient,
   QueryCommand,
   type QueryCommandInput,
@@ -116,6 +118,42 @@ export async function queryAll<T>(
     items.push(...((result.Items ?? []) as T[]));
     exclusiveStartKey = result.LastEvaluatedKey;
   } while (exclusiveStartKey);
+
+  return items;
+}
+
+/**
+ * Batch-gets items by primary key, chunking into DynamoDB's 100-key limit and
+ * retrying any unprocessed keys. Missing items are simply absent from the
+ * result, and result order is not guaranteed.
+ *
+ * @template T The type of the items to be returned.
+ * @param tableName The name of the DynamoDB table to read.
+ * @param keys The primary keys to fetch.
+ * @returns A promise that resolves to the items that exist.
+ */
+export async function batchGetAll<T>(
+  tableName: string,
+  keys: Record<string, unknown>[],
+): Promise<T[]> {
+  const items: T[] = [];
+
+  for (let start = 0; start < keys.length; start += 100) {
+    let pending: Record<string, unknown>[] | undefined = keys.slice(
+      start,
+      start + 100,
+    );
+
+    while (pending && pending.length > 0) {
+      const result: BatchGetCommandOutput = await dynamodb.send(
+        new BatchGetCommand({
+          RequestItems: { [tableName]: { Keys: pending } },
+        }),
+      );
+      items.push(...((result.Responses?.[tableName] ?? []) as T[]));
+      pending = result.UnprocessedKeys?.[tableName]?.Keys;
+    }
+  }
 
   return items;
 }

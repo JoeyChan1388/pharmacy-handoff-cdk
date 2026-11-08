@@ -134,7 +134,7 @@ describe("DataStack", () => {
   const template = Template.fromStack(stack);
 
   test("creates all data tables with on-demand billing", () => {
-    template.resourceCountIs("AWS::DynamoDB::Table", 5);
+    template.resourceCountIs("AWS::DynamoDB::Table", 10);
 
     template.hasResourceProperties("AWS::DynamoDB::Table", {
       TableName: "PharmacyHandoffData-UsersTable",
@@ -258,7 +258,7 @@ describe("DataStack", () => {
     const tables = Object.values(
       template.findResources("AWS::DynamoDB::Table"),
     );
-    expect(tables).toHaveLength(5);
+    expect(tables).toHaveLength(10);
 
     for (const table of tables) {
       const properties = table.Properties as {
@@ -285,6 +285,11 @@ describe("ApiStack", () => {
     staffLocationAssignmentsTable: dataStack.staffLocationAssignmentsTable,
   });
   const apiStack = new ApiStack(app, "ApiTestApi", {
+    alertsTable: dataStack.alertsTable,
+    messagesTable: dataStack.messagesTable,
+    alertReceiptsTable: dataStack.alertReceiptsTable,
+    conversationsTable: dataStack.conversationsTable,
+    conversationMembersTable: dataStack.conversationMembersTable,
     usersTable: dataStack.usersTable,
     organizationsTable: dataStack.organizationsTable,
     locationsTable: dataStack.locationsTable,
@@ -312,7 +317,7 @@ describe("ApiStack", () => {
         (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
     );
 
-    expect(methods).toHaveLength(13);
+    expect(methods).toHaveLength(18);
     const authorizerIds = new Set<string>();
     for (const method of methods) {
       const properties = method.Properties as {
@@ -327,7 +332,7 @@ describe("ApiStack", () => {
   });
 
   test("uses one profile Lambda with read-only access to the users table", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 10);
+    template.resourceCountIs("AWS::Lambda::Function", 13);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Runtime: "nodejs24.x",
       Handler: "index.handler",
@@ -371,7 +376,7 @@ describe("ApiStack", () => {
       (method) =>
         (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
     );
-    expect(getMethods).toHaveLength(13);
+    expect(getMethods).toHaveLength(18);
     expect(
       getMethods.every(
         (method) =>
@@ -411,7 +416,7 @@ describe("ApiStack", () => {
         (method.Properties as { HttpMethod?: string }).HttpMethod === "POST",
     );
 
-    expect(postMethods).toHaveLength(4);
+    expect(postMethods).toHaveLength(10);
     for (const method of postMethods) {
       expect(method.Properties).toMatchObject({
         AuthorizationType: "COGNITO_USER_POOLS",
@@ -441,7 +446,7 @@ describe("ApiStack", () => {
       (method) =>
         (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
     );
-    expect(getMethods).toHaveLength(13);
+    expect(getMethods).toHaveLength(18);
     expect(
       getMethods.every(
         (method) =>
@@ -452,7 +457,7 @@ describe("ApiStack", () => {
   });
 
   test("creates an allowlisted platform-admin organization endpoint", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 10);
+    template.resourceCountIs("AWS::Lambda::Function", 13);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({
