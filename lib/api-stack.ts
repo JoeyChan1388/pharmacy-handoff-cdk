@@ -1,8 +1,10 @@
 import { join } from "node:path";
 import { Construct } from "constructs";
+import { AllowedWebOrigins } from "./web-origins";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 
 import * as cdk from "aws-cdk-lib/core";
+import * as s3 from "aws-cdk-lib/aws-s3";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as lambda from "aws-cdk-lib/aws-lambda";
@@ -22,6 +24,7 @@ interface ApiStackProps extends cdk.StackProps {
   platformAdminUserIds: string[];
   locationsTable: dynamodb.ITable;
   staffUserPool: cognito.IUserPool;
+  profilePicturesBucket: s3.IBucket;
   patientUserPool: cognito.IUserPool;
   alertReceiptsTable: dynamodb.ITable;
   conversationsTable: dynamodb.ITable;
@@ -50,18 +53,6 @@ export class ApiStack extends cdk.Stack {
         "ApiStack requires at least one platform admin Cognito sub",
       );
     }
-
-    /**
-     * Allowed Origins
-     *
-     * This set of allowed origins will be used to configure CORS for the
-     * API Gateway. It will allow requests from the front-end applications
-     * running on localhost and the production domains.
-     */
-    const AllowedWebOrigins = [
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-    ];
 
     /**
      * API Access Logs
@@ -172,6 +163,7 @@ export class ApiStack extends cdk.Stack {
         handler: "handler",
         environment: {
           USERS_TABLE_NAME: props.usersTable.tableName,
+          PROFILE_PICTURES_BUCKET_NAME: props.profilePicturesBucket.bucketName,
           ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
         },
       },
@@ -179,6 +171,8 @@ export class ApiStack extends cdk.Stack {
 
     // Grant read permissions to the UserProfileResolver Lambda Function
     props.usersTable.grantReadData(getUserProfileResolver);
+    // Read-only: it only signs view URLs for profile pictures.
+    props.profilePicturesBucket.grantRead(getUserProfileResolver);
 
     // Create a Lambda integration for the GetUserProfileResolver
     const integration = new apigateway.LambdaIntegration(
@@ -314,6 +308,7 @@ export class ApiStack extends cdk.Stack {
         ),
         handler: "handler",
         environment: {
+          PROFILE_PICTURES_BUCKET_NAME: props.profilePicturesBucket.bucketName,
           ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
           ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
             props.organizationMembershipsTable.tableName,
@@ -325,6 +320,8 @@ export class ApiStack extends cdk.Stack {
         },
       },
     );
+    // Signs short-lived view URLs for other users' profile pictures.
+    props.profilePicturesBucket.grantRead(manageOrganizationDetails);
 
     /**
      * Grant Table Permissions to ManageOrganizationDetails Lambda Function
@@ -354,6 +351,7 @@ export class ApiStack extends cdk.Stack {
         ),
         handler: "handler",
         environment: {
+          PROFILE_PICTURES_BUCKET_NAME: props.profilePicturesBucket.bucketName,
           ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
           ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
             props.organizationMembershipsTable.tableName,
@@ -366,6 +364,8 @@ export class ApiStack extends cdk.Stack {
         },
       },
     );
+    // Signs short-lived view URLs for other users' profile pictures.
+    props.profilePicturesBucket.grantRead(getPlatformOrganizationDetails);
 
     /**
      * Grant Read Permissions to GetPlatformOrganizationDetails Lambda Function
@@ -434,6 +434,7 @@ export class ApiStack extends cdk.Stack {
         ),
         handler: "handler",
         environment: {
+          PROFILE_PICTURES_BUCKET_NAME: props.profilePicturesBucket.bucketName,
           USERS_TABLE_NAME: props.usersTable.tableName,
           LOCATIONS_TABLE_NAME: props.locationsTable.tableName,
           STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME:
@@ -445,6 +446,8 @@ export class ApiStack extends cdk.Stack {
         },
       },
     );
+    // Signs short-lived view URLs for other users' profile pictures.
+    props.profilePicturesBucket.grantRead(getPlatformLocationDetails);
     props.usersTable.grantReadData(getPlatformLocationDetails);
     props.locationsTable.grantReadData(getPlatformLocationDetails);
     props.staffLocationAssignmentsTable.grantReadData(
@@ -452,6 +455,36 @@ export class ApiStack extends cdk.Stack {
     );
     props.organizationMembershipsTable.grantReadData(
       getPlatformLocationDetails,
+    );
+
+    /**
+     * Manage Self Profile Lambda Function
+     *
+     * Lets staff edit their own name and preferences and upload a profile
+     * picture to the private profile pictures bucket.
+     */
+    const manageSelfProfile = new NodejsFunction(
+      this,
+      "ManageSelfProfileResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(__dirname, "../lambda/users/manageSelfProfileResolver.ts"),
+        handler: "handler",
+        environment: {
+          USERS_TABLE_NAME: props.usersTable.tableName,
+          STAFF_USER_POOL_ID: props.staffUserPool.userPoolId,
+          PROFILE_PICTURES_BUCKET_NAME: props.profilePicturesBucket.bucketName,
+          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
+        },
+      },
+    );
+    props.usersTable.grantReadWriteData(manageSelfProfile);
+    props.profilePicturesBucket.grantReadWrite(manageSelfProfile);
+    manageSelfProfile.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cognito-idp:AdminUpdateUserAttributes"],
+        resources: [props.staffUserPool.userPoolArn],
+      }),
     );
 
     /**
@@ -465,6 +498,7 @@ export class ApiStack extends cdk.Stack {
       entry: join(__dirname, "../lambda/messaging/messagingResolver.ts"),
       handler: "handler",
       environment: {
+        PROFILE_PICTURES_BUCKET_NAME: props.profilePicturesBucket.bucketName,
         USERS_TABLE_NAME: props.usersTable.tableName,
         MESSAGES_TABLE_NAME: props.messagesTable.tableName,
         ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
@@ -475,6 +509,8 @@ export class ApiStack extends cdk.Stack {
         ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
       },
     });
+    // Signs short-lived view URLs for other users' profile pictures.
+    props.profilePicturesBucket.grantRead(messaging);
     props.usersTable.grantReadData(messaging);
     props.organizationMembershipsTable.grantReadData(messaging);
     props.messagesTable.grantReadWriteData(messaging);
@@ -536,6 +572,7 @@ export class ApiStack extends cdk.Stack {
         entry: join(__dirname, "../lambda/platform/manageUsersResolver.ts"),
         handler: "handler",
         environment: {
+          PROFILE_PICTURES_BUCKET_NAME: props.profilePicturesBucket.bucketName,
           USERS_TABLE_NAME: props.usersTable.tableName,
           STAFF_USER_POOL_ID: props.staffUserPool.userPoolId,
           PATIENT_USER_POOL_ID: props.patientUserPool.userPoolId,
@@ -544,6 +581,8 @@ export class ApiStack extends cdk.Stack {
         },
       },
     );
+    // Signs short-lived view URLs for other users' profile pictures.
+    props.profilePicturesBucket.grantRead(managePlatformUser);
 
     /**
      * Grant Table Read/Write Permissions to ManagePlatformUser Lambda Function
@@ -738,6 +777,20 @@ export class ApiStack extends cdk.Stack {
       authorizationType: apigateway.AuthorizationType.COGNITO,
       authorizer: staffAuthorizer,
     });
+    staffMe.addMethod(
+      "PATCH",
+      new apigateway.LambdaIntegration(manageSelfProfile),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+    staffMe
+      .addResource("avatar")
+      .addMethod("POST", new apigateway.LambdaIntegration(manageSelfProfile), {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      });
     patientMe.addMethod("GET", integration, {
       authorizationType: apigateway.AuthorizationType.COGNITO,
       authorizer: patientAuthorizer,
@@ -1009,14 +1062,14 @@ export class ApiStack extends cdk.Stack {
      */
     conversations.addMethod("GET", messagingIntegration, staffAuth);
     conversations.addMethod("POST", messagingIntegration, staffAuth);
-    
+
     /**
      * Message Routes and Methods
      */
     conversationMessages.addMethod("GET", messagingIntegration, staffAuth);
     conversationMessages.addMethod("POST", messagingIntegration, staffAuth);
     conversationRead.addMethod("POST", messagingIntegration, staffAuth);
-    
+
     /**
      * GET /organizations/{organizationId}/colleagues Method
      */

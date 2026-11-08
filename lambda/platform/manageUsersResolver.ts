@@ -1,4 +1,5 @@
 import { jsonResponse } from "../shared/http";
+import { withAvatarUrl } from "../shared/avatars";
 import { authorizePlatformAdmin } from "../shared/authorization";
 import { buildUpdateExpression, dynamodb, scanAll } from "../shared/dynamodb";
 import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
@@ -229,7 +230,9 @@ async function listUsers(
   usersTable: string,
 ): Promise<APIGatewayProxyResult> {
   const users = await scanAll<Record<string, unknown>>(usersTable);
-  return jsonResponse(event, 200, { users });
+  return jsonResponse(event, 200, {
+    users: await Promise.all(users.map(withAvatarUrl)),
+  });
 }
 
 /**
@@ -257,7 +260,7 @@ async function getUser(
   if (!result.Item) {
     return jsonResponse(event, 404, { message: "User not found" });
   }
-  return jsonResponse(event, 200, { user: result.Item });
+  return jsonResponse(event, 200, { user: await withAvatarUrl(result.Item) });
 }
 
 /**
@@ -535,5 +538,7 @@ async function applyUserChanges(
       ReturnValues: "ALL_NEW",
     }),
   );
-  return jsonResponse(event, 200, { user: updated.Attributes });
+  return jsonResponse(event, 200, {
+    user: await withAvatarUrl(updated.Attributes as Record<string, unknown>),
+  });
 }

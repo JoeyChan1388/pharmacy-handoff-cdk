@@ -128,10 +128,93 @@ describe("AuthStack", () => {
   });
 });
 
+describe("ApiStack profile picture access", () => {
+  const app = new cdk.App();
+  const dataStack = new DataStack(app, "PicturesTestData");
+  const authStack = new AuthStack(app, "PicturesTestAuth", {
+    usersTable: dataStack.usersTable,
+    organizationMembershipsTable: dataStack.organizationMembershipsTable,
+    staffLocationAssignmentsTable: dataStack.staffLocationAssignmentsTable,
+  });
+  const apiStack = new ApiStack(app, "PicturesTestApi", {
+    platformAdminUserIds: ["admin"],
+    usersTable: dataStack.usersTable,
+    alertsTable: dataStack.alertsTable,
+    profilePicturesBucket: dataStack.profilePicturesBucket,
+    messagesTable: dataStack.messagesTable,
+    alertReceiptsTable: dataStack.alertReceiptsTable,
+    conversationsTable: dataStack.conversationsTable,
+    conversationMembersTable: dataStack.conversationMembersTable,
+    locationsTable: dataStack.locationsTable,
+    organizationsTable: dataStack.organizationsTable,
+    organizationMembershipsTable: dataStack.organizationMembershipsTable,
+    staffLocationAssignmentsTable: dataStack.staffLocationAssignmentsTable,
+    staffUserPool: authStack.staffUserPool,
+    patientUserPool: authStack.patientUserPool,
+  });
+  const template = Template.fromStack(apiStack);
+
+  test("every Lambda that returns other users' profiles can sign picture URLs", () => {
+    const lambdas = Object.values(
+      template.findResources("AWS::Lambda::Function"),
+    ).map(
+      (fn) =>
+        fn.Properties as {
+          Environment?: { Variables?: Record<string, unknown> };
+        },
+    );
+    const withPictures = lambdas.filter(
+      (fn) =>
+        fn.Environment?.Variables?.PROFILE_PICTURES_BUCKET_NAME !== undefined,
+    );
+    // profile, self profile, messaging, org details, platform org details,
+    // platform users, platform location details
+    expect(withPictures).toHaveLength(7);
+  });
+});
+
 describe("DataStack", () => {
   const app = new cdk.App();
   const stack = new DataStack(app, "PharmacyHandoffData");
   const template = Template.fromStack(stack);
+
+  test("creates a private, encrypted profile pictures bucket that is retained", () => {
+    template.resourceCountIs("AWS::S3::Bucket", 1);
+    template.hasResourceProperties("AWS::S3::Bucket", {
+      PublicAccessBlockConfiguration: {
+        BlockPublicAcls: true,
+        BlockPublicPolicy: true,
+        IgnorePublicAcls: true,
+        RestrictPublicBuckets: true,
+      },
+      BucketEncryption: Match.objectLike({
+        ServerSideEncryptionConfiguration: Match.anyValue(),
+      }),
+      CorsConfiguration: {
+        CorsRules: [
+          Match.objectLike({
+            AllowedMethods: ["POST"],
+            AllowedOrigins: Match.arrayWith(["http://localhost:3000"]),
+          }),
+        ],
+      },
+    });
+    template.hasResource("AWS::S3::Bucket", {
+      DeletionPolicy: "Retain",
+      UpdateReplacePolicy: "Retain",
+    });
+    // enforceSSL adds a policy denying non-TLS requests.
+    template.hasResourceProperties("AWS::S3::BucketPolicy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Effect: "Deny",
+            Condition: { Bool: { "aws:SecureTransport": "false" } },
+          }),
+        ]),
+      },
+    });
+  });
 
   test("creates all data tables with on-demand billing", () => {
     template.resourceCountIs("AWS::DynamoDB::Table", 10);
@@ -286,6 +369,7 @@ describe("ApiStack", () => {
   });
   const apiStack = new ApiStack(app, "ApiTestApi", {
     alertsTable: dataStack.alertsTable,
+    profilePicturesBucket: dataStack.profilePicturesBucket,
     messagesTable: dataStack.messagesTable,
     alertReceiptsTable: dataStack.alertReceiptsTable,
     conversationsTable: dataStack.conversationsTable,
@@ -332,7 +416,7 @@ describe("ApiStack", () => {
   });
 
   test("uses one profile Lambda with read-only access to the users table", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 13);
+    template.resourceCountIs("AWS::Lambda::Function", 14);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Runtime: "nodejs24.x",
       Handler: "index.handler",
@@ -416,7 +500,7 @@ describe("ApiStack", () => {
         (method.Properties as { HttpMethod?: string }).HttpMethod === "POST",
     );
 
-    expect(postMethods).toHaveLength(10);
+    expect(postMethods).toHaveLength(11);
     for (const method of postMethods) {
       expect(method.Properties).toMatchObject({
         AuthorizationType: "COGNITO_USER_POOLS",
@@ -457,7 +541,7 @@ describe("ApiStack", () => {
   });
 
   test("creates an allowlisted platform-admin organization endpoint", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 13);
+    template.resourceCountIs("AWS::Lambda::Function", 14);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({

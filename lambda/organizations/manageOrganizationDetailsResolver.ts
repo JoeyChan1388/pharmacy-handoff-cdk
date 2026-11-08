@@ -1,4 +1,5 @@
 import { jsonResponse } from "../shared/http";
+import { signedAvatarUrl } from "../shared/avatars";
 import { getCallerUserId } from "../shared/authorization";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { parseJsonBody, requiredText } from "../shared/validation";
@@ -45,6 +46,7 @@ interface OrganizationUser {
   email?: string;
   status?: string;
   givenName?: string;
+  avatarUrl?: string;
   familyName?: string;
   userStatus?: string;
   locationIds: string[];
@@ -59,7 +61,7 @@ interface OrganizationUser {
 interface OrganizationLocationDetails extends OrganizationLocation {
   assignedUsers: Pick<
     OrganizationUser,
-    "userId" | "email" | "role" | "status"
+    "userId" | "email" | "role" | "status" | "avatarUrl"
   >[];
 }
 
@@ -119,6 +121,9 @@ async function loadOrganizationUser(
     email: profile?.email ?? membership.email,
     givenName: profile?.givenName,
     familyName: profile?.familyName,
+    avatarUrl: profile?.avatarKey
+      ? await signedAvatarUrl(profile.avatarKey)
+      : undefined,
     role: membership.role,
     status: membership.status,
     userStatus: profile?.status,
@@ -299,11 +304,12 @@ export async function getDetails(
       ...location,
       assignedUsers: users
         .filter((user) => user.locationIds.includes(location.locationId))
-        .map(({ userId, email, role, status }) => ({
+        .map(({ userId, email, role, status, avatarUrl }) => ({
           userId,
           email,
           role,
           status,
+          avatarUrl,
         })),
     }),
   );

@@ -1,6 +1,8 @@
 import { Construct } from "constructs";
+import { AllowedWebOrigins } from "./web-origins";
 
 import * as cdk from "aws-cdk-lib/core";
+import * as s3 from "aws-cdk-lib/aws-s3";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 
 /**
@@ -14,6 +16,7 @@ export class DataStack extends cdk.Stack {
   public readonly alertsTable: dynamodb.Table;
   public readonly messagesTable: dynamodb.Table;
   public readonly locationsTable: dynamodb.Table;
+  public readonly profilePicturesBucket: s3.Bucket;
   public readonly organizationsTable: dynamodb.Table;
   public readonly conversationsTable: dynamodb.Table;
   public readonly alertReceiptsTable: dynamodb.Table;
@@ -272,6 +275,32 @@ export class DataStack extends cdk.Stack {
       },
       deletionProtection: true,
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+    });
+
+    /**
+     * Profile Pictures Bucket
+     *
+     * Private bucket for user profile pictures. Nothing is public: browsers
+     * upload with short-lived presigned POSTs (size- and type-restricted by
+     * the policy) and view with short-lived presigned GETs. Objects are kept
+     * when the stack is deleted.
+     */
+    this.profilePicturesBucket = new s3.Bucket(this, "ProfilePicturesBucket", {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      lifecycleRules: [
+        { abortIncompleteMultipartUploadAfter: cdk.Duration.days(1) },
+      ],
+      cors: [
+        {
+          allowedMethods: [s3.HttpMethods.POST],
+          allowedOrigins: AllowedWebOrigins,
+          allowedHeaders: ["*"],
+          maxAge: 3000,
+        },
+      ],
     });
 
     /**

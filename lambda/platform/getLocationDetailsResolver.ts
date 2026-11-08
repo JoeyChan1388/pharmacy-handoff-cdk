@@ -1,5 +1,6 @@
 import { jsonResponse } from "../shared/http";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
+import { signedAvatarUrl } from "../shared/avatars";
 import { dynamodb, queryAll } from "../shared/dynamodb";
 import { authorizePlatformAdmin } from "../shared/authorization";
 
@@ -121,6 +122,9 @@ export const handler = async (
           email: profile.Item?.email,
           givenName: profile.Item?.givenName,
           familyName: profile.Item?.familyName,
+          avatarUrl: profile.Item?.avatarKey
+            ? await signedAvatarUrl(profile.Item.avatarKey)
+            : undefined,
         };
       }),
   );

@@ -1,5 +1,6 @@
 import { dynamodb } from "../shared/dynamodb";
 import { jsonResponse } from "../shared/http";
+import { withAvatarUrl } from "../shared/avatars";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { getCallerUserId } from "../shared/authorization";
 
@@ -49,5 +50,5 @@ export const handler = async (
     return jsonResponse(event, 404, { message: "Profile not found" });
   }
 
-  return jsonResponse(event, 200, result.Item as Record<string, unknown>);
+  return jsonResponse(event, 200, await withAvatarUrl(result.Item));
 };

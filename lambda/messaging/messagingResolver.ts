@@ -773,6 +773,7 @@ async function listColleagues(
       email: profiles.get(membership.userId)?.email ?? membership.email,
       givenName: profiles.get(membership.userId)?.givenName,
       familyName: profiles.get(membership.userId)?.familyName,
+      avatarUrl: profiles.get(membership.userId)?.avatarUrl,
     })),
   });
 }

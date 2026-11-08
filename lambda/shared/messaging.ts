@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { signedAvatarUrl } from "./avatars";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { batchGetAll, dynamodb } from "./dynamodb";
 
@@ -29,6 +30,7 @@ export interface PublicProfile {
   userId: string;
   email?: string;
   givenName?: string;
+  avatarUrl?: string;
   familyName?: string;
 }
 
@@ -92,14 +94,18 @@ export async function loadProfiles(
   userIds: string[],
 ): Promise<Map<string, PublicProfile>> {
   const unique = [...new Set(userIds)];
-  const items = await batchGetAll<PublicProfile>(
+  const items = await batchGetAll<PublicProfile & { avatarKey?: string }>(
     usersTable,
     unique.map((userId) => ({ userId })),
   );
-  return new Map(
-    items.map(({ userId, email, givenName, familyName }) => [
+  const profiles = await Promise.all(
+    items.map(async ({ userId, email, givenName, familyName, avatarKey }) => ({
       userId,
-      { userId, email, givenName, familyName },
-    ]),
+      email,
+      givenName,
+      familyName,
+      avatarUrl: avatarKey ? await signedAvatarUrl(avatarKey) : undefined,
+    })),
   );
+  return new Map(profiles.map((profile) => [profile.userId, profile]));
 }

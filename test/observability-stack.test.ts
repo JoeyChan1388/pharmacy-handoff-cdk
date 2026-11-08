@@ -19,6 +19,7 @@ describe("ObservabilityStack", () => {
   });
   const apiStack = new ApiStack(app, "PharmacyHandoffApi", {
     alertsTable: dataStack.alertsTable,
+    profilePicturesBucket: dataStack.profilePicturesBucket,
     messagesTable: dataStack.messagesTable,
     alertReceiptsTable: dataStack.alertReceiptsTable,
     conversationsTable: dataStack.conversationsTable,

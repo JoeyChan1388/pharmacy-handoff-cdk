@@ -15,6 +15,11 @@ jest.mock("../lambda/shared/dynamodb", () => ({
 }));
 
 import { handler } from "../lambda/messaging/messagingResolver";
+jest.mock("../lambda/shared/avatars", () => ({
+  ...jest.requireActual<object>("../lambda/shared/avatars"),
+  signedAvatarUrl: jest.fn(async (key: string) => `https://signed/${key}`),
+}));
+
 import { batchGetAll, dynamodb, queryAll } from "../lambda/shared/dynamodb";
 
 const sendMock = dynamodb.send as unknown as AnyMock;
@@ -459,6 +464,58 @@ describe("messaging", () => {
         },
       ]);
     });
+  });
+
+  test("includes signed avatar URLs for colleagues and conversation participants", async () => {
+    routeByTable(sendMock, { memberships: memberships("u1") });
+    queryAllMock.mockImplementation(async (input: { TableName: string }) =>
+      input.TableName === "memberships"
+        ? [{ userId: "u2", status: "ACTIVE", role: "STAFF" }]
+        : [
+            {
+              conversationId: "c1",
+              lastMessageAt: "t",
+              lastMessagePreview: "p",
+              lastMessageSenderId: "u2",
+            },
+          ],
+    );
+    batchGetMock.mockImplementation(async (table: string) =>
+      table === "conversations"
+        ? [
+            {
+              conversationId: "c1",
+              organizationId: "org-1",
+              type: "DIRECT",
+              memberIds: ["u1", "u2"],
+            },
+          ]
+        : [
+            { userId: "u1", email: "me@x.com" },
+            { userId: "u2", email: "you@x.com", avatarKey: "avatars/u2/pic" },
+          ],
+    );
+
+    const { colleagues } = parseBody(
+      await handler(
+        event("GET", "/organizations/{organizationId}/colleagues", {
+          pathParameters: { organizationId: "org-1" },
+        }),
+      ),
+    );
+    const { conversations } = parseBody(
+      await handler(event("GET", "/staff/me/conversations")),
+    );
+
+    expect(colleagues[0].avatarUrl).toBe("https://signed/avatars/u2/pic");
+    const [you, me] = [
+      conversations[0].participants.find((p: any) => p.userId === "u2"),
+      conversations[0].participants.find((p: any) => p.userId === "u1"),
+    ];
+    expect(you.avatarUrl).toBe("https://signed/avatars/u2/pic");
+    expect(me.avatarUrl).toBeUndefined();
+    // The raw key never reaches the client.
+    expect(JSON.stringify(conversations)).not.toContain("avatarKey");
   });
 
   test("returns 401 without a caller", async () => {
