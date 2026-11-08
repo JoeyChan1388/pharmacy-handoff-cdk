@@ -286,7 +286,7 @@ describe("ApiStack", () => {
         (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
     );
 
-    expect(methods).toHaveLength(11);
+    expect(methods).toHaveLength(13);
     const authorizerIds = new Set<string>();
     for (const method of methods) {
       const properties = method.Properties as {
@@ -301,7 +301,7 @@ describe("ApiStack", () => {
   });
 
   test("uses one profile Lambda with read-only access to the users table", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 8);
+    template.resourceCountIs("AWS::Lambda::Function", 10);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Runtime: "nodejs24.x",
       Handler: "index.handler",
@@ -345,7 +345,7 @@ describe("ApiStack", () => {
       (method) =>
         (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
     );
-    expect(getMethods).toHaveLength(11);
+    expect(getMethods).toHaveLength(13);
     expect(
       getMethods.every(
         (method) =>
@@ -415,7 +415,7 @@ describe("ApiStack", () => {
       (method) =>
         (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
     );
-    expect(getMethods).toHaveLength(11);
+    expect(getMethods).toHaveLength(13);
     expect(
       getMethods.every(
         (method) =>
@@ -426,7 +426,7 @@ describe("ApiStack", () => {
   });
 
   test("creates an allowlisted platform-admin organization endpoint", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 8);
+    template.resourceCountIs("AWS::Lambda::Function", 10);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({

@@ -376,6 +376,80 @@ export class ApiStack extends cdk.Stack {
     );
 
     /**
+     * GetPlatformUserOrganizations Lambda Function
+     *
+     * Read-only. Lists a user's organizations, roles, and assigned locations for platform admins.
+     */
+    const getPlatformUserOrganizations = new NodejsFunction(
+      this,
+      "GetPlatformUserOrganizationsResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(
+          __dirname,
+          "../lambda/platform/getUserOrganizationsResolver.ts",
+        ),
+        handler: "handler",
+        environment: {
+          USERS_TABLE_NAME: props.usersTable.tableName,
+          LOCATIONS_TABLE_NAME: props.locationsTable.tableName,
+          STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME:
+            props.staffLocationAssignmentsTable.tableName,
+          ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
+            props.organizationMembershipsTable.tableName,
+          ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
+          PLATFORM_ADMIN_USER_IDS: props.platformAdminUserIds.join(","),
+          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
+        },
+      },
+    );
+    props.usersTable.grantReadData(getPlatformUserOrganizations);
+    props.locationsTable.grantReadData(getPlatformUserOrganizations);
+    props.staffLocationAssignmentsTable.grantReadData(
+      getPlatformUserOrganizations,
+    );
+    props.organizationsTable.grantReadData(getPlatformUserOrganizations);
+    props.organizationMembershipsTable.grantReadData(
+      getPlatformUserOrganizations,
+    );
+
+    /**
+     * GetPlatformLocationDetails Lambda Function
+     *
+     * Read-only. Returns a location and its assigned users to platform admins.
+     */
+    const getPlatformLocationDetails = new NodejsFunction(
+      this,
+      "GetPlatformLocationDetailsResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(
+          __dirname,
+          "../lambda/platform/getLocationDetailsResolver.ts",
+        ),
+        handler: "handler",
+        environment: {
+          USERS_TABLE_NAME: props.usersTable.tableName,
+          LOCATIONS_TABLE_NAME: props.locationsTable.tableName,
+          STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME:
+            props.staffLocationAssignmentsTable.tableName,
+          ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
+            props.organizationMembershipsTable.tableName,
+          PLATFORM_ADMIN_USER_IDS: props.platformAdminUserIds.join(","),
+          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
+        },
+      },
+    );
+    props.usersTable.grantReadData(getPlatformLocationDetails);
+    props.locationsTable.grantReadData(getPlatformLocationDetails);
+    props.staffLocationAssignmentsTable.grantReadData(
+      getPlatformLocationDetails,
+    );
+    props.organizationMembershipsTable.grantReadData(
+      getPlatformLocationDetails,
+    );
+
+    /**
      * ManagePlatformUser Lambda Function
      *
      * Single Lambda for all platform-admin user CRUD operations. It lists,
@@ -577,6 +651,10 @@ export class ApiStack extends cdk.Stack {
       platformOrganizations.addResource("{organizationId}");
     const platformOrganizationDetails =
       platformOrganization.addResource("details");
+    const platformOrganizationLocation = platformOrganization
+      .addResource("locations")
+      .addResource("{locationId}");
+    const platformUserOrganizations = platformUser.addResource("organizations");
 
     /**
      * GET /staff/me and GET /patient/me Methods
@@ -796,6 +874,34 @@ export class ApiStack extends cdk.Stack {
     platformOrganizationDetails.addMethod(
       "GET",
       new apigateway.LambdaIntegration(getPlatformOrganizationDetails),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+
+    /**
+     * GET /platform/users/{userId}/organizations Method
+     *
+     * Protected by the staff Cognito authorizer; the Lambda requires a platform admin.
+     */
+    platformUserOrganizations.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(getPlatformUserOrganizations),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+
+    /**
+     * GET /platform/organizations/{organizationId}/locations/{locationId} Method
+     *
+     * Protected by the staff Cognito authorizer; the Lambda requires a platform admin.
+     */
+    platformOrganizationLocation.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(getPlatformLocationDetails),
       {
         authorizationType: apigateway.AuthorizationType.COGNITO,
         authorizer: staffAuthorizer,
