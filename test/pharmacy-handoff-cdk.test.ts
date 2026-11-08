@@ -3,6 +3,7 @@ import { AuthStack } from "../lib/auth-stack";
 import { DataStack } from "../lib/data-stack";
 import { describe, expect, test } from "@jest/globals";
 import { Match, Template } from "aws-cdk-lib/assertions";
+import { LAMBDA_MEMORY_MB } from "../lib/lambda-defaults";
 
 import * as cdk from "aws-cdk-lib/core";
 
@@ -171,6 +172,91 @@ describe("ApiStack profile picture access", () => {
     // platform users, platform location details, organization settings,
     // staff organizations (logos), platform organizations (logos)
     expect(withPictures).toHaveLength(10);
+  });
+});
+
+describe("latency settings", () => {
+  const app = new cdk.App();
+  const dataStack = new DataStack(app, "LatencyTestData");
+  const authStack = new AuthStack(app, "LatencyTestAuth", {
+    usersTable: dataStack.usersTable,
+    organizationMembershipsTable: dataStack.organizationMembershipsTable,
+    staffLocationAssignmentsTable: dataStack.staffLocationAssignmentsTable,
+  });
+  const apiStack = new ApiStack(app, "LatencyTestApi", {
+    platformAdminUserIds: ["admin"],
+    usersTable: dataStack.usersTable,
+    alertsTable: dataStack.alertsTable,
+    profilePicturesBucket: dataStack.profilePicturesBucket,
+    messagesTable: dataStack.messagesTable,
+    alertReceiptsTable: dataStack.alertReceiptsTable,
+    conversationsTable: dataStack.conversationsTable,
+    conversationMembersTable: dataStack.conversationMembersTable,
+    locationsTable: dataStack.locationsTable,
+    organizationsTable: dataStack.organizationsTable,
+    organizationMembershipsTable: dataStack.organizationMembershipsTable,
+    staffLocationAssignmentsTable: dataStack.staffLocationAssignmentsTable,
+    staffUserPool: authStack.staffUserPool,
+    patientUserPool: authStack.patientUserPool,
+  });
+
+  test.each([
+    ["auth", Template.fromStack(authStack)],
+    ["api", Template.fromStack(apiStack)],
+  ])(
+    "every %s Lambda has more than the 128 MB default memory",
+    (_name, template) => {
+      const functions = Object.values(
+        template.findResources("AWS::Lambda::Function"),
+      ).map((fn) => (fn.Properties as { MemorySize?: number }).MemorySize);
+
+      expect(functions.length).toBeGreaterThan(0);
+      for (const memory of functions) {
+        expect(memory).toBe(LAMBDA_MEMORY_MB);
+      }
+    },
+  );
+
+  test.each([
+    ["auth", Template.fromStack(authStack)],
+    ["api", Template.fromStack(apiStack)],
+  ])(
+    "every %s Lambda maps minified stack traces back to source",
+    (_name, template) => {
+      const functions = Object.values(
+        template.findResources("AWS::Lambda::Function"),
+      ).map(
+        (fn) =>
+          (
+            fn.Properties as {
+              Environment?: { Variables?: Record<string, string> };
+            }
+          ).Environment?.Variables?.NODE_OPTIONS,
+      );
+
+      expect(functions.length).toBeGreaterThan(0);
+      for (const options of functions) {
+        expect(options).toBe("--enable-source-maps");
+      }
+    },
+  );
+
+  test("preflight responses can be cached by browsers", () => {
+    const template = Template.fromStack(apiStack);
+    const options = Object.values(
+      template.findResources("AWS::ApiGateway::Method", {
+        Properties: { HttpMethod: "OPTIONS" },
+      }),
+    );
+
+    expect(options.length).toBeGreaterThan(0);
+    for (const method of options) {
+      const integration = (method.Properties as any).Integration;
+      const headers = integration.IntegrationResponses[0].ResponseParameters;
+      expect(headers["method.response.header.Access-Control-Max-Age"]).toBe(
+        "'3600'",
+      );
+    }
   });
 });
 

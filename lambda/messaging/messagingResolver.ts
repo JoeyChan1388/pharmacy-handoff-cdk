@@ -1,4 +1,5 @@
 import { jsonResponse } from "../shared/http";
+import { newSortableId } from "../shared/ids";
 import { getCallerUserId } from "../shared/authorization";
 import {
   optionalText,
@@ -22,7 +23,6 @@ import {
   getActiveMembership,
   loadProfiles,
   MESSAGE_MAX_LENGTH,
-  newSortableId,
   previewOf,
   type PublicProfile,
 } from "../shared/messaging";

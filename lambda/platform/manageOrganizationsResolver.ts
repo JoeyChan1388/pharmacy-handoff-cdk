@@ -177,7 +177,9 @@ async function getOrganization(
   if (!result.Item) {
     return jsonResponse(event, 404, { message: "Organization not found" });
   }
-  return jsonResponse(event, 200, { organization: await withLogoUrl(result.Item) });
+  return jsonResponse(event, 200, {
+    organization: await withLogoUrl(result.Item),
+  });
 }
 
 /**

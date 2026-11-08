@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { signedAvatarUrl } from "./avatars";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { batchGetAll, dynamodb } from "./dynamodb";
@@ -45,17 +44,6 @@ export function previewOf(body: string): string {
   return flat.length > PREVIEW_MAX_LENGTH
     ? `${flat.slice(0, PREVIEW_MAX_LENGTH - 1)}…`
     : flat;
-}
-
-/**
- * Builds a sortable, URL-safe unique ID: a zero-padded millisecond timestamp
- * followed by a UUID, so lexical order is chronological order.
- *
- * @param now The timestamp in milliseconds
- * @returns The new ID
- */
-export function newSortableId(now: number = Date.now()): string {
-  return `${String(now).padStart(13, "0")}-${randomUUID()}`;
 }
 
 /**

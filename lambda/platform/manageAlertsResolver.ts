@@ -1,6 +1,6 @@
 import { jsonResponse } from "../shared/http";
 import { dynamodb } from "../shared/dynamodb";
-import { newSortableId } from "../shared/messaging";
+import { newSortableId } from "../shared/ids";
 import { PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { parseJsonBody, requiredText } from "../shared/validation";
 import {

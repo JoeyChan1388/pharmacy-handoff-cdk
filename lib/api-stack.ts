@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { Construct } from "constructs";
 import { AllowedWebOrigins } from "./web-origins";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+import { enableSourceMaps, nodejsFunctionDefaults } from "./lambda-defaults";
 
 import * as cdk from "aws-cdk-lib/core";
 import * as s3 from "aws-cdk-lib/aws-s3";
@@ -48,6 +49,8 @@ export class ApiStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
 
+    enableSourceMaps(this);
+
     if (props.platformAdminUserIds.length === 0) {
       throw new Error(
         "ApiStack requires at least one platform admin Cognito sub",
@@ -78,6 +81,8 @@ export class ApiStack extends cdk.Stack {
         allowOrigins: AllowedWebOrigins,
         allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allowHeaders: ["Authorization", "Content-Type"],
+        // Let browsers cache the preflight instead of re-checking every 5 seconds.
+        maxAge: cdk.Duration.hours(1),
       },
       deployOptions: {
         throttlingRateLimit: 50,
@@ -158,6 +163,7 @@ export class ApiStack extends cdk.Stack {
       this,
       "getUserProfileResolver",
       {
+        ...nodejsFunctionDefaults,
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(__dirname, "../lambda/users/getUserProfileResolver.ts"),
         handler: "handler",
@@ -190,6 +196,7 @@ export class ApiStack extends cdk.Stack {
       this,
       "InviteOrganizationStaffResolver",
       {
+        ...nodejsFunctionDefaults,
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(
           __dirname,
@@ -264,6 +271,7 @@ export class ApiStack extends cdk.Stack {
       this,
       "GetStaffOrganizationsResolver",
       {
+        ...nodejsFunctionDefaults,
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(
           __dirname,
@@ -307,6 +315,7 @@ export class ApiStack extends cdk.Stack {
       this,
       "ManageOrganizationDetailsResolver",
       {
+        ...nodejsFunctionDefaults,
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(
           __dirname,
@@ -350,6 +359,7 @@ export class ApiStack extends cdk.Stack {
       this,
       "GetPlatformOrganizationDetailsResolver",
       {
+        ...nodejsFunctionDefaults,
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(
           __dirname,
@@ -395,6 +405,7 @@ export class ApiStack extends cdk.Stack {
       this,
       "GetPlatformUserOrganizationsResolver",
       {
+        ...nodejsFunctionDefaults,
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(
           __dirname,
@@ -433,6 +444,7 @@ export class ApiStack extends cdk.Stack {
       this,
       "GetPlatformLocationDetailsResolver",
       {
+        ...nodejsFunctionDefaults,
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(
           __dirname,
@@ -473,6 +485,7 @@ export class ApiStack extends cdk.Stack {
       this,
       "ManageSelfProfileResolver",
       {
+        ...nodejsFunctionDefaults,
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(__dirname, "../lambda/users/manageSelfProfileResolver.ts"),
         handler: "handler",
@@ -503,6 +516,7 @@ export class ApiStack extends cdk.Stack {
       this,
       "ManageOrganizationSettingsResolver",
       {
+        ...nodejsFunctionDefaults,
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(
           __dirname,
@@ -531,6 +545,7 @@ export class ApiStack extends cdk.Stack {
      * the colleague directory used to start them.
      */
     const messaging = new NodejsFunction(this, "MessagingResolver", {
+      ...nodejsFunctionDefaults,
       runtime: lambda.Runtime.NODEJS_24_X,
       entry: join(__dirname, "../lambda/messaging/messagingResolver.ts"),
       handler: "handler",
@@ -561,6 +576,7 @@ export class ApiStack extends cdk.Stack {
      * ones they have read.
      */
     const staffAlerts = new NodejsFunction(this, "StaffAlertsResolver", {
+      ...nodejsFunctionDefaults,
       runtime: lambda.Runtime.NODEJS_24_X,
       entry: join(__dirname, "../lambda/messaging/staffAlertsResolver.ts"),
       handler: "handler",
@@ -582,6 +598,7 @@ export class ApiStack extends cdk.Stack {
       this,
       "ManagePlatformAlertsResolver",
       {
+        ...nodejsFunctionDefaults,
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(__dirname, "../lambda/platform/manageAlertsResolver.ts"),
         handler: "handler",
@@ -605,6 +622,7 @@ export class ApiStack extends cdk.Stack {
       this,
       "ManagePlatformUserResolver",
       {
+        ...nodejsFunctionDefaults,
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(__dirname, "../lambda/platform/manageUsersResolver.ts"),
         handler: "handler",
@@ -659,6 +677,7 @@ export class ApiStack extends cdk.Stack {
       this,
       "ManagePlatformOrganizationResolver",
       {
+        ...nodejsFunctionDefaults,
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(
           __dirname,
@@ -716,6 +735,7 @@ export class ApiStack extends cdk.Stack {
       this,
       "manageOrganizationLocationsResolver",
       {
+        ...nodejsFunctionDefaults,
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(
           __dirname,

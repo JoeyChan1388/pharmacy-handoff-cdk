@@ -1,8 +1,10 @@
 import { join } from "node:path";
 import { Construct } from "constructs";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+import { enableSourceMaps, nodejsFunctionDefaults } from "./lambda-defaults";
 
 import * as cdk from "aws-cdk-lib/core";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
@@ -30,6 +32,8 @@ export class AuthStack extends cdk.Stack {
 
   constructor(scope: Construct, id: string, props: AuthStackProps) {
     super(scope, id, props);
+
+    enableSourceMaps(this);
 
     /**
      * Staff User Pool
@@ -136,6 +140,7 @@ export class AuthStack extends cdk.Stack {
       this,
       "CreateUserProfileResolver",
       {
+        ...nodejsFunctionDefaults,
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(__dirname, "../lambda/auth/createUserProfileResolver.ts"),
         handler: "handler",
@@ -174,6 +179,7 @@ export class AuthStack extends cdk.Stack {
       this,
       "ActivateInvitedUserResolver",
       {
+        ...nodejsFunctionDefaults,
         runtime: lambda.Runtime.NODEJS_24_X,
         entry: join(__dirname, "../lambda/auth/activateInvitedUserResolver.ts"),
         handler: "handler",
@@ -194,6 +200,18 @@ export class AuthStack extends cdk.Stack {
     );
     props.staffLocationAssignmentsTable.grantReadWriteData(
       activateInvitedUserResolver,
+    );
+
+    // Verifies the email of users who just logged in with an emailed temporary
+    // password. Scoped to this account's user pools by wildcard because the
+    // pool itself depends on this function (a specific ARN would be circular).
+    activateInvitedUserResolver.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cognito-idp:AdminUpdateUserAttributes"],
+        resources: [
+          `arn:aws:cognito-idp:${this.region}:${this.account}:userpool/*`,
+        ],
+      }),
     );
 
     // Staff only: patients self-register and are activated on confirmation.

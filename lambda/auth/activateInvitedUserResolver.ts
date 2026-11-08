@@ -4,12 +4,23 @@ import {
   isConditionalCheckFailed,
   queryAll,
 } from "../shared/dynamodb";
+import {
+  AdminUpdateUserAttributesCommand,
+  CognitoIdentityProviderClient,
+} from "@aws-sdk/client-cognito-identity-provider";
 
 import type { PostAuthenticationTriggerEvent } from "aws-lambda";
 import type {
   OrganizationMembership,
   StaffLocationAssignment,
 } from "../shared/types";
+
+/**
+ * Cognito Client
+ *
+ * Used to mark a user's email verified after their first login.
+ */
+const cognito = new CognitoIdentityProviderClient({});
 
 /**
  * Config
@@ -82,6 +93,11 @@ async function activateIfInvited(
  * moves the user's profile, organization memberships, and location
  * assignments from INVITED to ACTIVE so they can see their organizations.
  *
+ * It also marks the user's email verified. Admin-created accounts start with
+ * an unverified email, which would make "forgot password" fail, and a
+ * successful login with the emailed temporary password proves the user
+ * controls that inbox.
+ *
  * A failure here is logged but never thrown: it must not lock the user out,
  * and the next successful login retries the activation.
  *
@@ -93,6 +109,20 @@ export const handler = async (
 ): Promise<PostAuthenticationTriggerEvent> => {
   const userId = event.request.userAttributes.sub;
   if (!userId) return event;
+
+  if (event.request.userAttributes.email_verified !== "true") {
+    try {
+      await cognito.send(
+        new AdminUpdateUserAttributesCommand({
+          UserPoolId: event.userPoolId,
+          Username: event.userName,
+          UserAttributes: [{ Name: "email_verified", Value: "true" }],
+        }),
+      );
+    } catch (error) {
+      console.error("Failed to verify user email", { userId, error });
+    }
+  }
 
   try {
     const config = loadConfig();
