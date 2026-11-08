@@ -11,6 +11,8 @@ describe("AuthStack", () => {
   const dataStack = new DataStack(app, "PharmacyHandoffData");
   const stack = new AuthStack(app, "PharmacyHandoffAuth", {
     usersTable: dataStack.usersTable,
+    organizationMembershipsTable: dataStack.organizationMembershipsTable,
+    staffLocationAssignmentsTable: dataStack.staffLocationAssignmentsTable,
   });
   const template = Template.fromStack(stack);
 
@@ -75,10 +77,32 @@ describe("AuthStack", () => {
   });
 
   test("bundles the post-confirmation handler for Node.js 24", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 1);
+    template.resourceCountIs("AWS::Lambda::Function", 2);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Runtime: "nodejs24.x",
       Handler: "index.handler",
+    });
+  });
+
+  test("activates invited staff on login through a staff-only PostAuthentication trigger", () => {
+    const pools = template.findResources("AWS::Cognito::UserPool");
+    const withTrigger = Object.values(pools).filter(
+      (pool) =>
+        (pool.Properties as { LambdaConfig?: { PostAuthentication?: unknown } })
+          .LambdaConfig?.PostAuthentication !== undefined,
+    );
+    expect(withTrigger).toHaveLength(1);
+    expect(
+      (withTrigger[0].Properties as { UserPoolName: string }).UserPoolName,
+    ).toContain("StaffUserPool");
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.objectLike({
+          ORGANIZATION_MEMBERSHIPS_TABLE_NAME: Match.anyValue(),
+          STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME: Match.anyValue(),
+        }),
+      },
     });
   });
 
@@ -257,6 +281,8 @@ describe("ApiStack", () => {
   const dataStack = new DataStack(app, "ApiTestData");
   const authStack = new AuthStack(app, "ApiTestAuth", {
     usersTable: dataStack.usersTable,
+    organizationMembershipsTable: dataStack.organizationMembershipsTable,
+    staffLocationAssignmentsTable: dataStack.staffLocationAssignmentsTable,
   });
   const apiStack = new ApiStack(app, "ApiTestApi", {
     usersTable: dataStack.usersTable,

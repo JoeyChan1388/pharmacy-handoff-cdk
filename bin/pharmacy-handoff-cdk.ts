@@ -39,6 +39,8 @@ const alertEmail: string =
 const dataStack = new DataStack(app, "PharmacyHandoffData");
 const authStack = new AuthStack(app, "PharmacyHandoffAuth", {
   usersTable: dataStack.usersTable,
+  organizationMembershipsTable: dataStack.organizationMembershipsTable,
+  staffLocationAssignmentsTable: dataStack.staffLocationAssignmentsTable,
 });
 const apiStack = new ApiStack(app, "PharmacyHandoffApi", {
   platformAdminUserIds,

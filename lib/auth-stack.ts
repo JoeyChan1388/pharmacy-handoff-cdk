@@ -11,10 +11,12 @@ import * as cognitoIdentityPool from "aws-cdk-lib/aws-cognito-identitypool";
 /**
  * AuthStackProps
  *
- * Tables the auth stack needs to wire its post-confirmation trigger.
+ * Tables the auth stack needs to wire its Cognito triggers.
  */
 interface AuthStackProps extends cdk.StackProps {
   usersTable: dynamodb.ITable;
+  organizationMembershipsTable: dynamodb.ITable;
+  staffLocationAssignmentsTable: dynamodb.ITable;
 }
 
 /**
@@ -157,6 +159,47 @@ export class AuthStack extends cdk.Stack {
     this.patientUserPool.addTrigger(
       cognito.UserPoolOperation.POST_CONFIRMATION,
       createUserProfileResolver,
+    );
+
+    /**
+     * ActivateInvitedUserResolver
+     *
+     * Invited staff are created with INVITED profile, membership, and
+     * assignment records. PostConfirmation does not fire for admin-created
+     * users, so this PostAuthentication trigger activates those records on
+     * their first successful login (including after setting a permanent
+     * password).
+     */
+    const activateInvitedUserResolver = new NodejsFunction(
+      this,
+      "ActivateInvitedUserResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(__dirname, "../lambda/auth/activateInvitedUserResolver.ts"),
+        handler: "handler",
+        description:
+          "Activates an invited staff user's profile, memberships, and location assignments on login.",
+        environment: {
+          USERS_TABLE_NAME: props.usersTable.tableName,
+          ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
+            props.organizationMembershipsTable.tableName,
+          STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME:
+            props.staffLocationAssignmentsTable.tableName,
+        },
+      },
+    );
+    props.usersTable.grantReadWriteData(activateInvitedUserResolver);
+    props.organizationMembershipsTable.grantReadWriteData(
+      activateInvitedUserResolver,
+    );
+    props.staffLocationAssignmentsTable.grantReadWriteData(
+      activateInvitedUserResolver,
+    );
+
+    // Staff only: patients self-register and are activated on confirmation.
+    this.staffUserPool.addTrigger(
+      cognito.UserPoolOperation.POST_AUTHENTICATION,
+      activateInvitedUserResolver,
     );
   }
 }
