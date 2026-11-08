@@ -1,5 +1,6 @@
 import { jsonResponse } from "../shared/http";
 import { GetCommand } from "@aws-sdk/lib-dynamodb";
+import { signedAvatarUrl } from "../shared/avatars";
 import { dynamodb, queryAll } from "../shared/dynamodb";
 import { getCallerUserId } from "../shared/authorization";
 
@@ -152,15 +153,16 @@ export const handler = async (
         );
         if (organizationResult.Item?.status === "INACTIVE") return undefined;
 
-        const locations = await loadVisibleLocations(
-          config,
-          membership,
-          activeAssignments,
-        );
+        const logoKey = organizationResult.Item?.logoKey;
+        const [locations, logoUrl] = await Promise.all([
+          loadVisibleLocations(config, membership, activeAssignments),
+          typeof logoKey === "string" ? signedAvatarUrl(logoKey) : undefined,
+        ]);
 
         return {
           organizationId: membership.organizationId,
           name: organizationResult.Item?.name,
+          logoUrl,
           role: membership.role,
           locations: locations.map(
             ({ locationId, name, city, province, status }) => ({

@@ -7,7 +7,11 @@ jest.mock("@aws-sdk/s3-request-presigner", () => ({
 }));
 
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { signedAvatarUrl, withAvatarUrl } from "../lambda/shared/avatars";
+import {
+  signedAvatarUrl,
+  withAvatarUrl,
+  withLogoUrl,
+} from "../lambda/shared/avatars";
 
 const signMock = getSignedUrl as unknown as AnyMock;
 
@@ -62,5 +66,20 @@ describe("avatar URLs", () => {
       avatarUrl: "https://signed.example/avatar",
     });
     expect(await withAvatarUrl({ userId: "u2" })).toEqual({ userId: "u2" });
+  });
+
+  test("withLogoUrl swaps the internal logo key for a URL", async () => {
+    expect(
+      await withLogoUrl({
+        organizationId: "org-1",
+        logoKey: "organizations/org-1/logos/a",
+      }),
+    ).toEqual({
+      organizationId: "org-1",
+      logoUrl: "https://signed.example/avatar",
+    });
+    expect(await withLogoUrl({ organizationId: "org-2" })).toEqual({
+      organizationId: "org-2",
+    });
   });
 });

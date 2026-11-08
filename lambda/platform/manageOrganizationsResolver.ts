@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { jsonResponse } from "../shared/http";
+import { withLogoUrl } from "../shared/avatars";
 import { authorizePlatformAdmin } from "../shared/authorization";
 import { normalizeEmail, parseJsonBody } from "../shared/validation";
 import {
@@ -146,7 +147,9 @@ async function listOrganizations(
   const organizations = await scanAll<Record<string, unknown>>(
     config.organizationsTable,
   );
-  return jsonResponse(event, 200, { organizations });
+  return jsonResponse(event, 200, {
+    organizations: await Promise.all(organizations.map(withLogoUrl)),
+  });
 }
 
 /**
@@ -174,7 +177,7 @@ async function getOrganization(
   if (!result.Item) {
     return jsonResponse(event, 404, { message: "Organization not found" });
   }
-  return jsonResponse(event, 200, { organization: result.Item });
+  return jsonResponse(event, 200, { organization: await withLogoUrl(result.Item) });
 }
 
 /**
@@ -278,7 +281,9 @@ async function applyOrganizationUpdates(
         ReturnValues: "ALL_NEW",
       }),
     );
-    return jsonResponse(event, 200, { organization: result.Attributes });
+    return jsonResponse(event, 200, {
+      organization: await withLogoUrl(result.Attributes ?? {}),
+    });
   } catch (error) {
     if (isConditionalCheckFailed(error)) {
       return jsonResponse(event, 404, { message: "Organization not found" });

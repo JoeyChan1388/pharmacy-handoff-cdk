@@ -14,6 +14,9 @@ jest.mock("../lambda/shared/dynamodb", () => ({
   dynamodb: { send: jest.fn() },
   scanAll: jest.fn(),
 }));
+jest.mock("@aws-sdk/s3-request-presigner", () => ({
+  getSignedUrl: jest.fn(async () => "https://signed.example/logo"),
+}));
 jest.mock("@aws-sdk/client-cognito-identity-provider", () => {
   const send = jest.fn();
   return {
@@ -74,6 +77,22 @@ describe("platform organizations resolver", () => {
       { organizationId: "org-1" },
     ]);
     expect(scanAllMock).toHaveBeenCalledWith("organizations");
+  });
+
+  test("lists logos as signed URLs and never exposes the S3 key", async () => {
+    process.env.PROFILE_PICTURES_BUCKET_NAME = "bucket";
+    scanAllMock.mockResolvedValue([
+      { organizationId: "org-1", logoKey: "organizations/org-1/logos/a" },
+      { organizationId: "org-2" },
+    ]);
+
+    const result = await handler(adminEvent("GET"));
+
+    expect(parseBody(result).organizations).toEqual([
+      { organizationId: "org-1", logoUrl: "https://signed.example/logo" },
+      { organizationId: "org-2" },
+    ]);
+    delete process.env.PROFILE_PICTURES_BUCKET_NAME;
   });
 
   test("creates an organization and its admin in one transaction", async () => {

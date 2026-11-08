@@ -168,8 +168,9 @@ describe("ApiStack profile picture access", () => {
         fn.Environment?.Variables?.PROFILE_PICTURES_BUCKET_NAME !== undefined,
     );
     // profile, self profile, messaging, org details, platform org details,
-    // platform users, platform location details
-    expect(withPictures).toHaveLength(7);
+    // platform users, platform location details, organization settings,
+    // staff organizations (logos), platform organizations (logos)
+    expect(withPictures).toHaveLength(10);
   });
 });
 
@@ -401,7 +402,7 @@ describe("ApiStack", () => {
         (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
     );
 
-    expect(methods).toHaveLength(18);
+    expect(methods).toHaveLength(19);
     const authorizerIds = new Set<string>();
     for (const method of methods) {
       const properties = method.Properties as {
@@ -416,7 +417,7 @@ describe("ApiStack", () => {
   });
 
   test("uses one profile Lambda with read-only access to the users table", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 14);
+    template.resourceCountIs("AWS::Lambda::Function", 15);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Runtime: "nodejs24.x",
       Handler: "index.handler",
@@ -460,7 +461,7 @@ describe("ApiStack", () => {
       (method) =>
         (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
     );
-    expect(getMethods).toHaveLength(18);
+    expect(getMethods).toHaveLength(19);
     expect(
       getMethods.every(
         (method) =>
@@ -500,7 +501,7 @@ describe("ApiStack", () => {
         (method.Properties as { HttpMethod?: string }).HttpMethod === "POST",
     );
 
-    expect(postMethods).toHaveLength(11);
+    expect(postMethods).toHaveLength(12);
     for (const method of postMethods) {
       expect(method.Properties).toMatchObject({
         AuthorizationType: "COGNITO_USER_POOLS",
@@ -530,7 +531,7 @@ describe("ApiStack", () => {
       (method) =>
         (method.Properties as { HttpMethod?: string }).HttpMethod === "GET",
     );
-    expect(getMethods).toHaveLength(18);
+    expect(getMethods).toHaveLength(19);
     expect(
       getMethods.every(
         (method) =>
@@ -541,7 +542,7 @@ describe("ApiStack", () => {
   });
 
   test("creates an allowlisted platform-admin organization endpoint", () => {
-    template.resourceCountIs("AWS::Lambda::Function", 14);
+    template.resourceCountIs("AWS::Lambda::Function", 15);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({

@@ -85,6 +85,8 @@ export interface StaffOrganizationLocation {
  */
 export interface StaffOrganizationSummary {
   name?: string;
+  /** Signed view URL of the organization's logo, when one is set. */
+  logoUrl?: string;
   organizationId: string;
   role: "ADMIN" | "STAFF";
   locations: StaffOrganizationLocation[];

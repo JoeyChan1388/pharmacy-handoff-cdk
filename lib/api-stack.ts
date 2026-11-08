@@ -277,10 +277,16 @@ export class ApiStack extends cdk.Stack {
             props.organizationMembershipsTable.tableName,
           STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME:
             props.staffLocationAssignmentsTable.tableName,
+          PROFILE_PICTURES_BUCKET_NAME: props.profilePicturesBucket.bucketName,
           ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
         },
       },
     );
+
+    /**
+     * Grant Read Access to Organization Logos (for signed logo URLs)
+     */
+    props.profilePicturesBucket.grantRead(getStaffOrganizations);
 
     /**
      * Grant Table Read Permissions to GetStaffOrganizations Lambda Function
@@ -488,6 +494,37 @@ export class ApiStack extends cdk.Stack {
     );
 
     /**
+     * Manage Organization Settings Lambda Function
+     *
+     * Organization name, contact details, time zone, and logo. Any member can
+     * read; only organization admins can change settings or upload a logo.
+     */
+    const manageOrganizationSettings = new NodejsFunction(
+      this,
+      "ManageOrganizationSettingsResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(
+          __dirname,
+          "../lambda/organizations/manageOrganizationSettingsResolver.ts",
+        ),
+        handler: "handler",
+        environment: {
+          ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
+          ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
+            props.organizationMembershipsTable.tableName,
+          PROFILE_PICTURES_BUCKET_NAME: props.profilePicturesBucket.bucketName,
+          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
+        },
+      },
+    );
+    props.organizationsTable.grantReadWriteData(manageOrganizationSettings);
+    props.organizationMembershipsTable.grantReadData(
+      manageOrganizationSettings,
+    );
+    props.profilePicturesBucket.grantReadWrite(manageOrganizationSettings);
+
+    /**
      * Messaging Lambda Function
      *
      * Staff conversations (direct and group) within one organization, plus
@@ -636,6 +673,7 @@ export class ApiStack extends cdk.Stack {
           ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
           ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
             props.organizationMembershipsTable.tableName,
+          PROFILE_PICTURES_BUCKET_NAME: props.profilePicturesBucket.bucketName,
           ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
         },
       },
@@ -644,6 +682,7 @@ export class ApiStack extends cdk.Stack {
     /**
      * IAM Policies for ManagePlatformOrganization Lambda Function
      */
+    props.profilePicturesBucket.grantRead(managePlatformOrganization);
     props.organizationsTable.grantReadWriteData(managePlatformOrganization);
     managePlatformOrganization.addToRolePolicy(
       new iam.PolicyStatement({
@@ -1051,6 +1090,24 @@ export class ApiStack extends cdk.Stack {
     const platformAlertsIntegration = new apigateway.LambdaIntegration(
       managePlatformAlerts,
     );
+
+    const organizationSettings = organizationResource.addResource("settings");
+    const organizationSettingsIntegration = new apigateway.LambdaIntegration(
+      manageOrganizationSettings,
+    );
+    organizationSettings.addMethod(
+      "GET",
+      organizationSettingsIntegration,
+      staffAuth,
+    );
+    organizationSettings.addMethod(
+      "PATCH",
+      organizationSettingsIntegration,
+      staffAuth,
+    );
+    organizationResource
+      .addResource("logo")
+      .addMethod("POST", organizationSettingsIntegration, staffAuth);
 
     const conversations = staffMe.addResource("conversations");
     const conversation = conversations.addResource("{conversationId}");

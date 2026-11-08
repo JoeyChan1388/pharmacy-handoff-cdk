@@ -43,9 +43,21 @@ export function avatarKeyPrefix(userId: string): string {
 }
 
 /**
- * Builds a short-lived URL for viewing a profile picture.
+ * Key prefix for an organization's logos. Keys outside it are never accepted
+ * for that organization.
  *
- * @param key The object key stored on the user's profile
+ * @param organizationId The organization's ID
+ * @returns The prefix, ending in a slash
+ */
+export function logoKeyPrefix(organizationId: string): string {
+  return `organizations/${organizationId}/logos/`;
+}
+
+/**
+ * Builds a short-lived URL for viewing an uploaded image (profile picture or
+ * organization logo).
+ *
+ * @param key The object key stored on the profile or organization
  * @returns The signed URL, or undefined when no bucket is configured
  */
 export async function signedAvatarUrl(
@@ -72,4 +84,19 @@ export async function withAvatarUrl(
   const { avatarKey, ...rest } = item;
   if (typeof avatarKey !== "string") return rest;
   return { ...rest, avatarUrl: await signedAvatarUrl(avatarKey) };
+}
+
+/**
+ * Prepares a stored organization item for a client: swaps the internal logo
+ * key for a signed view URL, so S3 keys never leave the API.
+ *
+ * @param item The organization item from DynamoDB
+ * @returns The item without logoKey, plus logoUrl when a logo is set
+ */
+export async function withLogoUrl(
+  item: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const { logoKey, ...rest } = item;
+  if (typeof logoKey !== "string") return rest;
+  return { ...rest, logoUrl: await signedAvatarUrl(logoKey) };
 }
