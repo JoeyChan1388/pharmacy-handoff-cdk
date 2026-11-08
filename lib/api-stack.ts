@@ -333,6 +333,49 @@ export class ApiStack extends cdk.Stack {
     );
 
     /**
+     * GetPlatformOrganizationDetails Lambda Function
+     *
+     * Read-only. Returns the full organization, staff, and locations view to
+     * platform admins without requiring organization membership.
+     */
+    const getPlatformOrganizationDetails = new NodejsFunction(
+      this,
+      "GetPlatformOrganizationDetailsResolver",
+      {
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: join(
+          __dirname,
+          "../lambda/platform/getOrganizationDetailsResolver.ts",
+        ),
+        handler: "handler",
+        environment: {
+          ORGANIZATIONS_TABLE_NAME: props.organizationsTable.tableName,
+          ORGANIZATION_MEMBERSHIPS_TABLE_NAME:
+            props.organizationMembershipsTable.tableName,
+          USERS_TABLE_NAME: props.usersTable.tableName,
+          LOCATIONS_TABLE_NAME: props.locationsTable.tableName,
+          STAFF_LOCATION_ASSIGNMENTS_TABLE_NAME:
+            props.staffLocationAssignmentsTable.tableName,
+          PLATFORM_ADMIN_USER_IDS: props.platformAdminUserIds.join(","),
+          ALLOWED_ORIGINS: AllowedWebOrigins.join(","),
+        },
+      },
+    );
+
+    /**
+     * Grant Read Permissions to GetPlatformOrganizationDetails Lambda Function
+     */
+    props.organizationsTable.grantReadData(getPlatformOrganizationDetails);
+    props.organizationMembershipsTable.grantReadData(
+      getPlatformOrganizationDetails,
+    );
+    props.usersTable.grantReadData(getPlatformOrganizationDetails);
+    props.locationsTable.grantReadData(getPlatformOrganizationDetails);
+    props.staffLocationAssignmentsTable.grantReadData(
+      getPlatformOrganizationDetails,
+    );
+
+    /**
      * ManagePlatformUser Lambda Function
      *
      * Single Lambda for all platform-admin user CRUD operations. It lists,
@@ -532,6 +575,8 @@ export class ApiStack extends cdk.Stack {
     const platformUser = platformUsers.addResource("{userId}");
     const platformOrganization =
       platformOrganizations.addResource("{organizationId}");
+    const platformOrganizationDetails =
+      platformOrganization.addResource("details");
 
     /**
      * GET /staff/me and GET /patient/me Methods
@@ -735,6 +780,22 @@ export class ApiStack extends cdk.Stack {
     platformOrganization.addMethod(
       "GET",
       new apigateway.LambdaIntegration(managePlatformOrganization),
+      {
+        authorizationType: apigateway.AuthorizationType.COGNITO,
+        authorizer: staffAuthorizer,
+      },
+    );
+
+    /**
+     * GET /platform/organizations/{organizationId}/details Method
+     *
+     * This method is protected by the staff Cognito authorizer and returns an
+     * organization's staff and locations to platform admins, who need not be
+     * members of the organization.
+     */
+    platformOrganizationDetails.addMethod(
+      "GET",
+      new apigateway.LambdaIntegration(getPlatformOrganizationDetails),
       {
         authorizationType: apigateway.AuthorizationType.COGNITO,
         authorizer: staffAuthorizer,

@@ -26,7 +26,7 @@ const NAME_MAX_LENGTH = 120;
  *
  * Table names the resolver reads from the environment.
  */
-interface Config {
+export interface Config {
   usersTable: string;
   locationsTable: string;
   assignmentsTable: string;
@@ -69,7 +69,7 @@ interface OrganizationLocationDetails extends OrganizationLocation {
  *
  * @returns The resolved configuration
  */
-function loadConfig(): Config {
+export function loadConfig(): Config {
   const config = {
     usersTable: process.env.USERS_TABLE_NAME,
     locationsTable: process.env.LOCATIONS_TABLE_NAME,
@@ -225,7 +225,7 @@ export const handler = async (
  * @param organization The organization record
  * @returns A 200 response with organization, users, and locations
  */
-async function getDetails(
+export async function getDetails(
   event: APIGatewayProxyEvent,
   config: Config,
   callerMembership: OrganizationMembership,
